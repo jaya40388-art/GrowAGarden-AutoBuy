@@ -1,6 +1,6 @@
 --[[
     ╔══════════════════════════════════════════════════════════════╗
-    ║                   JAYA SCRIPT - HUB v1.0                     ║
+    ║                     JAYA SC - HUB v1.0                       ║
     ║               Game: Grow a Garden (Roblox)                   ║
     ║            Compatible: Delta, Fluxus, Codex, Solara          ║
     ║          100% Custom Framework (No External Credits)         ║
@@ -8,7 +8,7 @@
 ]]
 
 -- ═══════════════════════════════════════════════════════════════
--- 1. SERVICES & COMPATIBILITY
+-- 1. SERVICES & COMPATIBILITY LAYER
 -- ═══════════════════════════════════════════════════════════════
 local Players = game:GetService("Players")
 local Player = Players.LocalPlayer
@@ -19,7 +19,6 @@ local VirtualUser = game:GetService("VirtualUser")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CoreGui = game:GetService("CoreGui")
 
--- Safe Parent Resolver for Delta & Other Executors
 local function GetSafeGuiParent()
     if RunService:IsStudio() then
         return Player:WaitForChild("PlayerGui")
@@ -35,7 +34,35 @@ local function GetSafeGuiParent()
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- 2. GAME CONFIGURATION & LOGIC (GROW A GARDEN)
+-- 2. LOGO ASSET LOADER (JSC LOGO)
+-- ═══════════════════════════════════════════════════════════════
+local LOGO_URL = "https://raw.githubusercontent.com/jaya40388-art/GrowAGarden-AutoBuy/refs/heads/main/logo.png"
+local CACHED_LOGO_ASSET = nil
+
+local function GetLogoAsset()
+    if CACHED_LOGO_ASSET then return CACHED_LOGO_ASSET end
+    pcall(function()
+        local getAsset = getcustomasset or getsynasset
+        if typeof(getAsset) == "function" and typeof(writefile) == "function" then
+            local fileName = "jaya_sc_logo.png"
+            local shouldDownload = true
+            if typeof(isfile) == "function" and isfile(fileName) then
+                shouldDownload = false
+            end
+            if shouldDownload then
+                local content = game:HttpGet(LOGO_URL)
+                if content and #content > 0 then
+                    writefile(fileName, content)
+                end
+            end
+            CACHED_LOGO_ASSET = getAsset(fileName)
+        end
+    end)
+    return CACHED_LOGO_ASSET
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- 3. GAME CONFIGURATION & LOGIC (GROW A GARDEN)
 -- ═══════════════════════════════════════════════════════════════
 local CONFIG = {
     DELAY_BETWEEN_PURCHASES = 0.3,
@@ -169,7 +196,7 @@ local function MatchesFilter(seedName)
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- 3. JAYA UI ENGINE (PROPRIETARY FRAMEWORK)
+-- 4. JAYA SC UI ENGINE (PROPRIETARY FRAMEWORK)
 -- ═══════════════════════════════════════════════════════════════
 local JayaLib = {
     AccentColor = Color3.fromRGB(16, 185, 129),    -- Emerald Green #10b981
@@ -181,7 +208,6 @@ local JayaLib = {
     BorderCol   = Color3.fromRGB(45, 45, 60),     -- Subtle Divider
 }
 
--- Anti-AFK Kick Prevention
 function JayaLib:EnableAntiAFK()
     Player.Idled:Connect(function()
         VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
@@ -191,7 +217,6 @@ function JayaLib:EnableAntiAFK()
 end
 JayaLib:EnableAntiAFK()
 
--- Instance Factory Helper
 local function CreateInstance(className, properties, parent)
     local inst = Instance.new(className)
     for k, v in pairs(properties or {}) do
@@ -201,7 +226,6 @@ local function CreateInstance(className, properties, parent)
     return inst
 end
 
--- Smooth Universal Draggable Handler (Touch & Mouse Support)
 local function MakeDraggable(handle, target)
     local dragging, dragStart, startPos = false, nil, nil
 
@@ -230,7 +254,6 @@ local function MakeDraggable(handle, target)
     end)
 end
 
--- Material Ripple Effect
 local function SpawnRipple(button, x, y)
     task.spawn(function()
         button.ClipsDescendants = true
@@ -255,7 +278,6 @@ local function SpawnRipple(button, x, y)
     end)
 end
 
--- Toast Notification Engine
 function JayaLib:Notify(title, message, duration)
     task.spawn(function()
         local parent = GetSafeGuiParent()
@@ -284,15 +306,31 @@ function JayaLib:Notify(title, message, duration)
         CreateInstance("UICorner", { CornerRadius = UDim.new(0, 8) }, toast)
         CreateInstance("UIStroke", { Color = JayaLib.AccentColor, Thickness = 1.4 }, toast)
 
+        -- Toast Header with Logo or Icon
+        local logoAsset = GetLogoAsset()
+        local textOffset = 12
+
+        if logoAsset then
+            local iconImg = CreateInstance("ImageLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0, 10, 0, 9),
+                Size = UDim2.new(0, 18, 0, 18),
+                Image = logoAsset,
+                Parent = toast
+            })
+            CreateInstance("UICorner", { CornerRadius = UDim.new(1, 0) }, iconImg)
+            textOffset = 34
+        end
+
         local titleLbl = CreateInstance("TextLabel", {
             Font = Enum.Font.GothamBold,
-            Text = "🌿 " .. (title or "Jaya Script"),
+            Text = (logoAsset and "" or "🌿 ") .. (title or "JAYA SC"),
             TextColor3 = JayaLib.TextMain,
             TextSize = 13,
             TextXAlignment = Enum.TextXAlignment.Left,
             BackgroundTransparency = 1,
-            Position = UDim2.new(0, 12, 0, 8),
-            Size = UDim2.new(1, -24, 0, 18),
+            Position = UDim2.new(0, textOffset, 0, 8),
+            Size = UDim2.new(1, -textOffset - 10, 0, 18),
             Parent = toast
         })
 
@@ -309,14 +347,12 @@ function JayaLib:Notify(title, message, duration)
             Parent = toast
         })
 
-        -- Slide In
         TweenService:Create(toast, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
             Position = UDim2.new(0, 0, 1, -75)
         }):Play()
 
         task.wait(duration or 3.5)
 
-        -- Slide Out
         local outTw = TweenService:Create(toast, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
             Position = UDim2.new(1, 320, 1, -75)
         })
@@ -326,10 +362,10 @@ function JayaLib:Notify(title, message, duration)
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- 4. JAYA WINDOW CREATION
+-- 5. JAYA SC WINDOW CREATION
 -- ═══════════════════════════════════════════════════════════════
 function JayaLib:CreateWindow(config)
-    local titleText = config.Title or "Jaya Hub"
+    local titleText = config.Title or "JAYA SC"
     local subText = config.Subtitle or "Grow a Garden"
     local windowSize = config.Size or UDim2.fromOffset(540, 330)
     local tabWidth = config.TabWidth or 130
@@ -345,23 +381,49 @@ function JayaLib:CreateWindow(config)
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     }, rootParent)
 
-    -- Floating Icon for Mobile / Minimize Restore
+    local logoAsset = GetLogoAsset()
+
+    -- ═══════════════════════════════════════════════════════════
+    -- Floating Icon for Mobile / Minimize Restore (Using JSC Logo)
+    -- ═══════════════════════════════════════════════════════════
     local FloatIcon = CreateInstance("TextButton", {
         Name = "Jaya_FloatIcon",
         BackgroundColor3 = JayaLib.BgDark,
         BorderSizePixel = 0,
         Position = UDim2.new(0.04, 0, 0.12, 0),
-        Size = UDim2.new(0, 46, 0, 46),
-        Text = "🌱",
-        TextSize = 22,
+        Size = UDim2.new(0, 50, 0, 50),
+        Text = "",
         Visible = false,
         Parent = ScreenGui
     })
-    CreateInstance("UICorner", { CornerRadius = UDim.new(0, 12) }, FloatIcon)
-    CreateInstance("UIStroke", { Color = JayaLib.AccentColor, Thickness = 2 }, FloatIcon)
+    CreateInstance("UICorner", { CornerRadius = UDim.new(1, 0) }, FloatIcon)
+    CreateInstance("UIStroke", { Color = JayaLib.AccentColor, Thickness = 2.2 }, FloatIcon)
     MakeDraggable(FloatIcon, FloatIcon)
 
+    if logoAsset then
+        local floatImg = CreateInstance("ImageLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -6, 1, -6),
+            Position = UDim2.new(0, 3, 0, 3),
+            Image = logoAsset,
+            Parent = FloatIcon
+        })
+        CreateInstance("UICorner", { CornerRadius = UDim.new(1, 0) }, floatImg)
+    else
+        local floatFallback = CreateInstance("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 1, 0),
+            Text = "JSC",
+            TextColor3 = JayaLib.AccentColor,
+            Font = Enum.Font.GothamBold,
+            TextSize = 14,
+            Parent = FloatIcon
+        })
+    end
+
+    -- ═══════════════════════════════════════════════════════════
     -- Main Window Container
+    -- ═══════════════════════════════════════════════════════════
     local MainFrame = CreateInstance("Frame", {
         Name = "MainWindow",
         BackgroundColor3 = JayaLib.BgDark,
@@ -375,12 +437,14 @@ function JayaLib:CreateWindow(config)
     CreateInstance("UICorner", { CornerRadius = UDim.new(0, 10) }, MainFrame)
     CreateInstance("UIStroke", { Color = JayaLib.BorderCol, Thickness = 1.5 }, MainFrame)
 
-    -- Top Header Bar
+    -- ═══════════════════════════════════════════════════════════
+    -- Top Header Bar (With Logo next to Title)
+    -- ═══════════════════════════════════════════════════════════
     local Topbar = CreateInstance("Frame", {
         Name = "Topbar",
         BackgroundColor3 = Color3.fromRGB(22, 22, 30),
         BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 42),
+        Size = UDim2.new(1, 0, 0, 44),
         Parent = MainFrame
     })
     CreateInstance("UICorner", { CornerRadius = UDim.new(0, 10) }, Topbar)
@@ -392,17 +456,32 @@ function JayaLib:CreateWindow(config)
         Parent = Topbar
     })
 
-    local LogoBadge = CreateInstance("TextLabel", {
-        Font = Enum.Font.GothamBold,
-        Text = "JAYA",
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 11,
-        BackgroundColor3 = JayaLib.AccentColor,
-        Position = UDim2.new(0, 12, 0.5, -10),
-        Size = UDim2.new(0, 42, 0, 20),
+    -- JSC Logo in Topbar
+    local topLogo = CreateInstance("ImageLabel", {
+        Name = "JSC_Logo",
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 10, 0.5, -14),
+        Size = UDim2.new(0, 28, 0, 28),
+        Image = logoAsset or "",
         Parent = Topbar
     })
-    CreateInstance("UICorner", { CornerRadius = UDim.new(0, 4) }, LogoBadge)
+    CreateInstance("UICorner", { CornerRadius = UDim.new(1, 0) }, topLogo)
+
+    -- If no asset, fallback to stylized text badge
+    if not logoAsset then
+        topLogo.Visible = false
+        local badge = CreateInstance("TextLabel", {
+            Font = Enum.Font.GothamBold,
+            Text = "JSC",
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            TextSize = 10,
+            BackgroundColor3 = JayaLib.AccentColor,
+            Position = UDim2.new(0, 10, 0.5, -10),
+            Size = UDim2.new(0, 28, 0, 20),
+            Parent = Topbar
+        })
+        CreateInstance("UICorner", { CornerRadius = UDim.new(0, 4) }, badge)
+    end
 
     local TitleLabel = CreateInstance("TextLabel", {
         Font = Enum.Font.GothamBold,
@@ -411,8 +490,8 @@ function JayaLib:CreateWindow(config)
         TextSize = 14,
         TextXAlignment = Enum.TextXAlignment.Left,
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, 62, 0, 0),
-        Size = UDim2.new(0, 150, 1, 0),
+        Position = UDim2.new(0, 46, 0, 0),
+        Size = UDim2.new(0, 80, 1, 0),
         Parent = Topbar
     })
 
@@ -423,7 +502,7 @@ function JayaLib:CreateWindow(config)
         TextSize = 12,
         TextXAlignment = Enum.TextXAlignment.Left,
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, TitleLabel.TextBounds.X + 70, 0, 0),
+        Position = UDim2.new(0, 46 + TitleLabel.TextBounds.X + 8, 0, 0),
         Size = UDim2.new(0, 180, 1, 0),
         Parent = Topbar
     })
@@ -457,7 +536,7 @@ function JayaLib:CreateWindow(config)
     MinBtn.Activated:Connect(function()
         MainFrame.Visible = false
         FloatIcon.Visible = true
-        JayaLib:Notify("Jaya Hub", "UI di-minimize. Klik ikon mengambang untuk membuka kembali.", 3)
+        JayaLib:Notify("JAYA SC", "UI di-minimize. Klik ikon JSC untuk membuka kembali.", 3)
     end)
     FloatIcon.Activated:Connect(function()
         MainFrame.Visible = true
@@ -471,7 +550,7 @@ function JayaLib:CreateWindow(config)
     CreateInstance("Frame", {
         BackgroundColor3 = JayaLib.BorderCol,
         BorderSizePixel = 0,
-        Position = UDim2.new(0, 0, 0, 42),
+        Position = UDim2.new(0, 0, 0, 44),
         Size = UDim2.new(1, 0, 0, 1),
         Parent = MainFrame
     })
@@ -480,8 +559,8 @@ function JayaLib:CreateWindow(config)
     local Sidebar = CreateInstance("ScrollingFrame", {
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        Position = UDim2.new(0, 10, 0, 50),
-        Size = UDim2.new(0, tabWidth, 1, -58),
+        Position = UDim2.new(0, 10, 0, 52),
+        Size = UDim2.new(0, tabWidth, 1, -60),
         ScrollBarThickness = 0,
         CanvasSize = UDim2.new(0, 0, 0, 0),
         Parent = MainFrame
@@ -495,8 +574,8 @@ function JayaLib:CreateWindow(config)
     -- Content Area with Page Navigation
     local ContentHolder = CreateInstance("Frame", {
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, tabWidth + 18, 0, 50),
-        Size = UDim2.new(1, -(tabWidth + 28), 1, -58),
+        Position = UDim2.new(0, tabWidth + 18, 0, 52),
+        Size = UDim2.new(1, -(tabWidth + 28), 1, -60),
         ClipsDescendants = true,
         Parent = MainFrame
     })
@@ -541,7 +620,6 @@ function JayaLib:CreateWindow(config)
         end
         PageList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateScroll)
 
-        -- Tab Button
         local TabBtn = CreateInstance("TextButton", {
             BackgroundColor3 = (currentIdx == 0) and JayaLib.AccentColor or JayaLib.BgCard,
             BorderSizePixel = 0,
@@ -582,7 +660,6 @@ function JayaLib:CreateWindow(config)
 
         tabCount = tabCount + 1
 
-        -- Section System (Collapsible Accordion)
         local Tab = {}
 
         function Tab:AddSection(secTitle, isOpen)
@@ -659,10 +736,9 @@ function JayaLib:CreateWindow(config)
                 refreshSectionHeight()
             end)
 
-            -- Component Items
             local Items = {}
 
-            -- 1. BUTTON
+            -- BUTTON
             function Items:AddButton(cfg)
                 local bTitle = cfg.Title or "Button"
                 local bDesc = cfg.Content or cfg.Desc or ""
@@ -707,7 +783,7 @@ function JayaLib:CreateWindow(config)
                 return btn
             end
 
-            -- 2. TOGGLE
+            -- TOGGLE
             function Items:AddToggle(cfg)
                 local tTitle = cfg.Title or "Toggle"
                 local tDesc = cfg.Content or cfg.Desc or ""
@@ -747,7 +823,6 @@ function JayaLib:CreateWindow(config)
                     Parent = tog
                 })
 
-                -- Pill Switch
                 local Pill = CreateInstance("Frame", {
                     BackgroundColor3 = state and JayaLib.AccentColor or Color3.fromRGB(50, 50, 65),
                     AnchorPoint = Vector2.new(1, 0.5),
@@ -787,7 +862,7 @@ function JayaLib:CreateWindow(config)
                 return handler
             end
 
-            -- 3. SLIDER
+            -- SLIDER
             function Items:AddSlider(cfg)
                 local sTitle = cfg.Title or "Slider"
                 local minVal = cfg.Min or 0
@@ -874,7 +949,7 @@ function JayaLib:CreateWindow(config)
                 end)
             end
 
-            -- 4. DROPDOWN (SINGLE & MULTI SELECT)
+            -- DROPDOWN (MULTI & SINGLE)
             function Items:AddDropdown(cfg)
                 local dTitle = cfg.Title or "Dropdown"
                 local options = cfg.Options or {}
@@ -1032,7 +1107,7 @@ function JayaLib:CreateWindow(config)
                 end)
             end
 
-            -- 5. PARAGRAPH INFO
+            -- PARAGRAPH
             function Items:AddParagraph(cfg)
                 local pTitle = cfg.Title or "Info"
                 local pDesc = cfg.Content or cfg.Desc or ""
@@ -1087,11 +1162,11 @@ function JayaLib:CreateWindow(config)
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- 5. IMPLEMENTASI FITUR GAME: GROW A GARDEN DENGAN JAYA HUB
+-- 6. IMPLEMENTASI FITUR GAME: GROW A GARDEN DENGAN JAYA SC
 -- ═══════════════════════════════════════════════════════════════
 
 local Window = JayaLib:CreateWindow({
-    Title = "JAYA HUB",
+    Title = "JAYA SC",
     Subtitle = "Grow a Garden",
     Size = UDim2.fromOffset(540, 330),
     TabWidth = 135
@@ -1269,16 +1344,16 @@ local TabSettings = Window:CreateTab({ Name = "Pengaturan", Icon = "⚙️" })
 local SecSettings = TabSettings:AddSection("Sistem & Info", true)
 
 SecSettings:AddParagraph({
-    Title = "Jaya Script v1.0",
+    Title = "JAYA SC v1.0",
     Content = "Framework UI kustom eksklusif untuk game Roblox Grow a Garden. Dibuat mandiri & bebas kredit pihak ketiga."
 })
 
 SecSettings:AddButton({
     Title = "Uji Coba Notifikasi",
     Callback = function()
-        JayaLib:Notify("Jaya Hub", "Sistem notifikasi berjalan lancar dan responsif!", 3.5)
+        JayaLib:Notify("JAYA SC", "Sistem notifikasi berjalan lancar dan responsif!", 3.5)
     end
 })
 
 -- Notifikasi Sambutan
-JayaLib:Notify("Jaya Hub", "Selamat datang! Script Grow a Garden berhasil dimuat.", 4.5)
+JayaLib:Notify("JAYA SC", "Selamat datang! Script Grow a Garden berhasil dimuat.", 4.5)

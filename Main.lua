@@ -1,848 +1,2324 @@
---[[
-    ╔══════════════════════════════════════════════╗
-    ║   Grow a Garden - Auto Buy Seeds (Filtered)  ║
-    ║   Executor: Delta / Fluxus / Solara / Codex  ║
-    ║   Game: Grow a Garden (Roblox)               ║
-    ╚══════════════════════════════════════════════╝
-    
-    Fitur:
-    - Otomatis membeli benih berdasarkan Nama & Rarity (Kelangkaan)
-    - Tab GUI: [Utama] [Rarity] [Pilih Benih]
-    - Status & notifikasi real-time
-    - Loop mode & Auto-retry jika gagal
-    - Auto-detect Rarity dari game data
-]]
-
--- ═══════════════════════════════════════════════
--- Services
--- ═══════════════════════════════════════════════
+﻿local Speed_Library = (function()
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Player = Players.LocalPlayer
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
-local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+local VirtualUser = game:GetService("VirtualUser")
 
-local player = Players.LocalPlayer
+local Custom = {} do
+  Custom.ColorRGB = Color3.fromRGB(250, 7, 7)
 
--- ═══════════════════════════════════════════════
--- Konfigurasi & Filter
--- ═══════════════════════════════════════════════
-local CONFIG = {
-    DELAY_BETWEEN_PURCHASES = 0.3,   -- Delay antar pembelian (detik)
-    AUTO_RETRY = true,               -- Otomatis coba lagi jika gagal
-    MAX_RETRIES = 3,                 -- Maksimal percobaan ulang
-    BUY_QUANTITY = 1,                -- Jumlah per pembelian
-    LOOP_MODE = false,               -- Mode loop (beli terus-menerus)
-    LOOP_INTERVAL = 5,               -- Interval loop (detik)
+  function Custom:Create(Name, Properties, Parent)
+    local _instance = Instance.new(Name)
 
-    -- Filter (Jika tabel kosong = tidak membatasi / beli semua)
-    SELECTED_NAMES = {},             -- Contoh: { ["Carrot Seed"] = true }
-    SELECTED_RARITIES = {},          -- Contoh: { ["Rare"] = true }
-}
+    for i, v in pairs(Properties) do
+      _instance[i] = v
+    end
 
--- ═══════════════════════════════════════════════
--- Database Rarity & Warna
--- ═══════════════════════════════════════════════
-local RARITY_COLORS = {
-    Common    = Color3.fromRGB(180, 180, 180),
-    Uncommon  = Color3.fromRGB(80, 200, 120),
-    Rare      = Color3.fromRGB(60, 140, 255),
-    Epic      = Color3.fromRGB(180, 70, 255),
-    Legendary = Color3.fromRGB(255, 185, 30),
-    Mythic    = Color3.fromRGB(255, 60, 100),
-}
+    if Parent then
+      _instance.Parent = Parent
+    end
 
-local SEED_RARITY = {
-    -- Common
-    ["Carrot Seed"]       = "Common",
-    ["Tomato Seed"]       = "Common",
-    ["Potato Seed"]       = "Common",
-    ["Wheat Seed"]        = "Common",
-    ["Corn Seed"]         = "Common",
-    ["Onion Seed"]        = "Common",
-    ["Lettuce Seed"]      = "Common",
+    return _instance
+  end
 
-    -- Uncommon
-    ["Strawberry Seed"]   = "Uncommon",
-    ["Blueberry Seed"]    = "Uncommon",
-    ["Pepper Seed"]       = "Uncommon",
-    ["Tulip Seed"]        = "Uncommon",
-    ["Daisy Seed"]        = "Uncommon",
-    ["Rice Seed"]         = "Uncommon",
-
-    -- Rare
-    ["Watermelon Seed"]   = "Rare",
-    ["Pumpkin Seed"]      = "Rare",
-    ["Rose Seed"]         = "Rare",
-    ["Cactus Seed"]       = "Rare",
-    ["Mushroom Seed"]     = "Rare",
-    ["Bamboo Seed"]       = "Rare",
-
-    -- Epic
-    ["Apple Seed"]        = "Epic",
-    ["Orange Seed"]       = "Epic",
-    ["Grape Seed"]        = "Epic",
-    ["Lemon Seed"]        = "Epic",
-    ["Cherry Seed"]       = "Epic",
-    ["Sunflower Seed"]    = "Epic",
-
-    -- Legendary
-    ["Mango Seed"]        = "Legendary",
-    ["Coconut Seed"]      = "Legendary",
-    ["Dragonfruit Seed"]  = "Legendary",
-    ["Starfruit Seed"]    = "Legendary",
-    ["Golden Apple Seed"] = "Legendary",
-
-    -- Mythic
-    ["Moonflower Seed"]   = "Mythic",
-    ["Rainbow Seed"]      = "Mythic",
-    ["Crystal Seed"]      = "Mythic",
-    ["Cosmic Seed"]       = "Mythic",
-}
-
--- ═══════════════════════════════════════════════
--- Utility Functions
--- ═══════════════════════════════════════════════
-local function notify(title, text, duration)
-    pcall(function()
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = title or "Auto Buy Seeds",
-            Text = text or "",
-            Duration = duration or 3
-        })
+  function Custom:EnabledAFK()
+    Player.Idled:Connect(function()
+      VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+      task.wait(1)
+      VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
     end)
+  end
 end
 
-local function log(msg)
-    print("[AutoBuySeeds] " .. tostring(msg))
+Custom:EnabledAFK()
+
+local function OpenClose()
+  local ScreenGui = Custom:Create("ScreenGui", {
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+  }, RunService:IsStudio() and Player.PlayerGui or (gethui() or cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")))
+
+  local Close_ImageButton = Custom:Create("ImageButton", {
+    BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+    BorderColor3 = Color3.fromRGB(255, 0, 0),
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0.1021, 0, 0.0743, 0),
+    Size = UDim2.new(0, 59, 0, 49),
+    Image = "rbxassetid://136890595976124",
+    Visible = false,
+  }, ScreenGui)
+
+  local UICorner = Custom:Create("UICorner", {
+    Name = "MainCorner",
+    CornerRadius = UDim.new(0, 9),
+  }, Close_ImageButton)
+
+  local dragging, dragStart, startPos = false, nil, nil
+
+  local function UpdateDraggable(input)
+    local delta = input.Position - dragStart
+    Close_ImageButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+  end
+
+  Close_ImageButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+      dragging = true
+      dragStart = input.Position
+      startPos = Close_ImageButton.Position
+
+      input.Changed:Connect(function()
+        if input.UserInputState == Enum.UserInputState.End then
+          dragging = false
+        end
+      end)
+    end
+  end)
+
+  Close_ImageButton.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+      UpdateDraggable(input)
+    end
+  end)
+
+  return Close_ImageButton
 end
 
--- ═══════════════════════════════════════════════
--- Filter Matching Logic
--- ═══════════════════════════════════════════════
-local function matchesFilters(seedName)
-    local hasNameFilter = next(CONFIG.SELECTED_NAMES) ~= nil
-    local hasRarityFilter = next(CONFIG.SELECTED_RARITIES) ~= nil
-    local rarity = SEED_RARITY[seedName]
+local Open_Close = OpenClose()
 
-    local nameMatches = not hasNameFilter or CONFIG.SELECTED_NAMES[seedName] == true
-    local rarityMatches = not hasRarityFilter or (rarity and CONFIG.SELECTED_RARITIES[rarity] == true)
+local function MakeDraggable(topbarobject, object)
+  local dragging, dragStart, startPos = false, nil, nil
 
-    return nameMatches and rarityMatches
+  local function UpdatePos(input)
+    local delta = input.Position - dragStart
+    local newPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    object.Position = newPos
+  end
+
+  topbarobject.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+      dragging = true
+      dragStart = input.Position
+      startPos = object.Position
+
+      input.Changed:Connect(function()
+        if input.UserInputState == Enum.UserInputState.End then
+          dragging = false
+        end
+      end)
+    end
+  end)
+
+  topbarobject.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+      UpdatePos(input)
+    end
+  end)
 end
 
--- ═══════════════════════════════════════════════
--- Pencarian Remote Events / Functions
--- ═══════════════════════════════════════════════
-local function findBuyRemote()
-    local remotes = {}
-    local searchPaths = {
-        ReplicatedStorage,
-        ReplicatedStorage:FindFirstChild("Remotes"),
-        ReplicatedStorage:FindFirstChild("Events"),
-        ReplicatedStorage:FindFirstChild("RemoteEvents"),
-        ReplicatedStorage:FindFirstChild("Network"),
-        ReplicatedStorage:FindFirstChild("Shared"),
-    }
-    
-    local keywords = {"buy", "purchase", "shop", "seed", "store", "item", "transaction"}
-    
-    for _, path in pairs(searchPaths) do
-        if path then
-            for _, child in pairs(path:GetDescendants()) do
-                if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
-                    local nameLower = child.Name:lower()
-                    for _, keyword in pairs(keywords) do
-                        if nameLower:find(keyword) then
-                            table.insert(remotes, child)
-                            log("Ditemukan remote: " .. child:GetFullName())
-                            break
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    return remotes
+function CircleClick(Button, X, Y)
+	task.spawn(function()
+		Button.ClipsDescendants = true
+		
+		local Circle = Instance.new("ImageLabel")
+		Circle.Image = "rbxassetid://106471194043211"
+		Circle.ImageColor3 = Color3.fromRGB(80, 80, 80)
+		Circle.ImageTransparency = 0.8999999761581421
+		Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		Circle.BackgroundTransparency = 1
+		Circle.ZIndex = 10
+		Circle.Name = "Circle"
+		Circle.Parent = Button
+		
+		local NewX = X - Button.AbsolutePosition.X
+		local NewY = Y - Button.AbsolutePosition.Y
+		Circle.Position = UDim2.new(0, NewX, 0, NewY)
+
+		local Size = math.max(Button.AbsoluteSize.X, Button.AbsoluteSize.Y) * 1.5
+
+		local Time = 0.5
+		local TweenInfo = TweenInfo.new(Time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+		local Tween = TweenService:Create(Circle, TweenInfo, {
+			Size = UDim2.new(0, Size, 0, Size),
+			Position = UDim2.new(0.5, -Size/2, 0.5, -Size/2)
+		})
+		
+		Tween:Play()
+		
+		Tween.Completed:Connect(function()
+			for i = 1, 10 do
+				Circle.ImageTransparency = Circle.ImageTransparency + 0.01
+				wait(Time / 10)
+			end
+			Circle:Destroy()
+		end)
+	end)
 end
 
--- ═══════════════════════════════════════════════
--- Pencarian Benih & Deteksi Rarity Otomatis
--- ═══════════════════════════════════════════════
-local function findAllSeeds()
-    local seeds = {}
-    local foundSet = {}
+local Speed_Library, Notification = {}, {}
 
-    local function addSeed(name, detectedRarity)
-        if not foundSet[name] then
-            foundSet[name] = true
-            table.insert(seeds, name)
-            if detectedRarity and not SEED_RARITY[name] then
-                SEED_RARITY[name] = detectedRarity
-            end
-        end
-    end
+Speed_Library.Unloaded = false
 
-    local searchLocations = {
-        ReplicatedStorage:FindFirstChild("Seeds"),
-        ReplicatedStorage:FindFirstChild("Items"),
-        ReplicatedStorage:FindFirstChild("ShopItems"),
-        ReplicatedStorage:FindFirstChild("SeedData"),
-        ReplicatedStorage:FindFirstChild("GameData"),
-        ReplicatedStorage:FindFirstChild("Data"),
-        ReplicatedStorage:FindFirstChild("Configs"),
-        ReplicatedStorage:FindFirstChild("Assets"),
-    }
+function Speed_Library:SetNotification(Config)
+  local Title = Config[1] or Config.Title or ""
+  local Description = Config[2] or Config.Description or ""
+	local Content = Config[3] or Config.Content or ""
+  local Time = Config[5] or Config.Time or 0.5
+  local Delay = Config[6] or Config.Delay or 5
+
+  local NotificationGui = Custom:Create("ScreenGui", {
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+  }, RunService:IsStudio() and Player.PlayerGui or (gethui() or cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")))
+
+  local NotificationLayout = Custom:Create("Frame", {
+    AnchorPoint = Vector2.new(1, 1),
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundTransparency = 0.999,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Position = UDim2.new(1, -30, 1, -30),
+    Size = UDim2.new(0, 320, 1, 0),
+    Name = "NotificationLayout"
+  }, NotificationGui)
+
+  local Count = 0
+
+  NotificationLayout.ChildRemoved:Connect(function()
+    Count = 0
+    local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
     
-    for _, location in pairs(searchLocations) do
-        if location then
-            for _, item in pairs(location:GetDescendants()) do
-                local nameLower = item.Name:lower()
-                if nameLower:find("seed") or nameLower:find("benih") then
-                    -- Cek attribute atau child Rarity
-                    local detectedRarity = item:GetAttribute("Rarity")
-                    if not detectedRarity and item:FindFirstChild("Rarity") then
-                        detectedRarity = item.Rarity.Value
-                    end
-                    addSeed(item.Name, detectedRarity)
-                end
-            end
-        end
+    for _, v in ipairs(NotificationLayout:GetChildren()) do
+      local NewPOS = UDim2.new(0, 0, 1, -((v.Size.Y.Offset + 12) * Count))
+      local tween = TweenService:Create(v, tweenInfo, {Position = NewPOS})
+      tween:Play()
+      Count = Count + 1
     end
-    
-    -- Cek ModuleScript
-    for _, module in pairs(ReplicatedStorage:GetDescendants()) do
-        if module:IsA("ModuleScript") then
-            local nameLower = module.Name:lower()
-            if nameLower:find("seed") or nameLower:find("shop") or nameLower:find("item") then
-                local success, data = pcall(function()
-                    return require(module)
-                end)
-                if success and type(data) == "table" then
-                    for key, value in pairs(data) do
-                        if type(key) == "string" and (key:lower():find("seed") or key:lower():find("benih")) then
-                            local r = type(value) == "table" and (value.Rarity or value.rarity) or nil
-                            addSeed(key, r)
-                        end
-                    end
-                end
-            end
-        end
-    end
+  end)
 
-    -- Fallback ke default list jika belum ada dari game
-    if #seeds == 0 then
-        for seedName, _ in pairs(SEED_RARITY) do
-            addSeed(seedName, nil)
-        end
-    end
+  local _Count = 0
+  for _, v in ipairs(NotificationLayout:GetChildren()) do
+    _Count = -(v.Position.Y.Offset) + v.Size.Y.Offset + 12
+  end
 
-    table.sort(seeds)
-    return seeds
+  local NotificationFrame = Custom:Create("Frame", {
+    BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 150),
+    Name = "NotificationFrame",
+    BackgroundTransparency = 1,
+    AnchorPoint = Vector2.new(0, 1),
+    Position = UDim2.new(0, 0, 1, -(_Count))
+  }, NotificationLayout)
+
+  local NotificationFrameReal = Custom:Create("Frame", {
+    BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 400, 0, 0),
+    Size = UDim2.new(1, 0, 1, 0),
+    Name = "NotificationFrameReal"
+  }, NotificationFrame)
+
+  Custom:Create("UICorner", {
+    CornerRadius = UDim.new(0, 8)
+  }, NotificationFrameReal)
+
+  local DropShadowHolder = Custom:Create("Frame", {
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 1, 0),
+    ZIndex = 0,
+    Name = "DropShadowHolder",
+    Parent = NotificationFrameReal
+  })
+
+  local DropShadow = Custom:Create("ImageLabel", {
+    Image = "",
+    ImageColor3 = Color3.fromRGB(0, 0, 0),
+    ImageTransparency = 0.5,
+    ScaleType = Enum.ScaleType.Slice,
+    SliceCenter = Rect.new(49, 49, 450, 450),
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = UDim2.new(1, 47, 1, 47),
+    ZIndex = 0,
+    Name = "DropShadow",
+    Parent = DropShadowHolder
+  })
+ 
+  local Top = Custom:Create("Frame", {
+    BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+    BackgroundTransparency = 0.999,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 36),
+    Name = "Top",
+    Parent = NotificationFrameReal
+  })
+
+  local TextLabel = Custom:Create("TextLabel", {
+    Font = Enum.Font.GothamBold,
+    Text = Title,
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 14,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundTransparency = 0.999,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 1, 0),
+    Position = UDim2.new(0, 10, 0, 0),
+    Parent = Top
+  })
+
+  Custom:Create("UIStroke", {
+    Color = Color3.fromRGB(255, 255, 255),
+    Thickness = 0.3,
+    Parent = TextLabel
+  })
+
+  Custom:Create("UICorner", {
+    Parent = Top,
+    CornerRadius = UDim.new(0, 5)
+  })
+
+  local TextLabel1 = Custom:Create("TextLabel", {
+    Font = Enum.Font.GothamBold,
+    Text = Description,
+    TextColor3 = Custom.ColorRGB,
+    TextSize = 14,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundTransparency = 0.999,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 1, 0),
+    Position = UDim2.new(0, TextLabel.TextBounds.X + 15, 0, 0),
+    Parent = Top
+  })
+
+  Custom:Create("UIStroke", {
+    Color = Custom.ColorRGB,
+    Thickness = 0.4,
+    Parent = TextLabel1
+  })
+
+  local Close = Custom:Create("TextButton", {
+    Font = Enum.Font.SourceSans,
+    Text = "X",
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 18,
+    AnchorPoint = Vector2.new(1, 0.5),
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundTransparency = 0.999,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Position = UDim2.new(1, -5, 0.5, 0),
+    Size = UDim2.new(0, 25, 0, 25),
+    Name = "Close",
+    Parent = Top
+  })
+
+  local TextLabel2 = Custom:Create("TextLabel", {
+    Font = Enum.Font.GothamBold,
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 13,
+    Text = Content,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Top,
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundTransparency = 0.999,
+    TextColor3 = Color3.fromRGB(150, 150, 150),
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 10, 0, 27),
+    Size = UDim2.new(1, -20, 0, 13),
+    Parent = NotificationFrameReal
+  })
+
+  TextLabel2.Size = UDim2.new(1, -20, 0, 13 + (13 * (TextLabel2.TextBounds.X // TextLabel2.AbsoluteSize.X)))
+  TextLabel2.TextWrapped = true
+
+  if TextLabel2.AbsoluteSize.Y < 27 then
+    NotificationFrame.Size = UDim2.new(1, 0, 0, 65)
+  else
+    NotificationFrame.Size = UDim2.new(1, 0, 0, TextLabel2.AbsoluteSize.Y + 40)
+  end
+
+  local Waitted = false
+
+  function Notification:Close()
+    if Waitted then return false end
+    Waitted = true
+
+    local tween = TweenService:Create(NotificationFrameReal,TweenInfo.new(tonumber(Time), Enum.EasingStyle.Back, Enum.EasingDirection.InOut),{Position = UDim2.new(0, 400, 0, 0)})
+    tween:Play()
+
+    task.wait(tonumber(Time) / 1.2)
+
+    NotificationFrame:Destroy()
+
+    Waitted = false
+  end
+
+  Close.Activated:Connect(function()
+    Notification:Close()
+	end)
+
+  TweenService:Create(NotificationFrameReal, TweenInfo.new(tonumber(Time), Enum.EasingStyle.Back, Enum.EasingDirection.InOut), {Position = UDim2.new(0, 0, 0, 0)} ):Play()
+  task.wait(tonumber(Delay))
+  Notification:Close()
+
+  return Notification
 end
 
--- ═══════════════════════════════════════════════
--- Fungsi Utama: Beli Benih (dengan Filter)
--- ═══════════════════════════════════════════════
-local function buyFilteredSeeds()
-    log("Memulai Auto Buy Seeds (Filtered)...")
+function Speed_Library:CreateWindow(Config)
+  local Title = Config[1] or Config.Title or ""
+  local Description = Config[2] or Config.Description or ""
+  local TabWidth = Config[3] or Config["Tab Width"] or 120
+  local SizeUi = Config[4] or Config.SizeUi or UDim2.fromOffset(550, 315)
+
+  local Funcs = {}
+
+  local SpeedHubXGui = Custom:Create("ScreenGui", {
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+  }, RunService:IsStudio() and Player.PlayerGui or (gethui() or cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")))
+
+  local DropShadowHolder = Custom:Create("Frame", {
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Size = UDim2.new(0, 455, 0, 350),
+    ZIndex = 0,
+    Name = "DropShadowHolder",
+    Position = UDim2.new(0, (SpeedHubXGui.AbsoluteSize.X // 2 - 455 // 2), 0, (SpeedHubXGui.AbsoluteSize.Y // 2 - 350 // 2))
+  }, SpeedHubXGui)
+
+  local DropShadow = Custom:Create("ImageLabel", {
+    Image = "",
+    ImageColor3 = Color3.fromRGB(15, 15, 15),
+    ImageTransparency = 0.5,
+    ScaleType = Enum.ScaleType.Slice,
+    SliceCenter = Rect.new(49, 49, 450, 450),
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = SizeUi,
+    ZIndex = 0,
+    Name = "DropShadow"
+  }, DropShadowHolder)
+
+  local Main = Custom:Create("Frame", {
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    BackgroundColor3 = Color3.fromRGB(15, 15, 15),
+    BackgroundTransparency = 0.1,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = SizeUi,
+    Name = "Main"
+  }, DropShadow)
+
+  Custom:Create("UICorner", {}, Main)
+
+  Custom:Create("UIStroke", {
+    Color = Color3.fromRGB(50, 50, 50),
+    Thickness = 1.6
+  }, Main)
+
+  local Top = Custom:Create("Frame", {
+    BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+    BackgroundTransparency = 0.9990000128746033,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 38),
+    Name = "Top"
+  }, Main)
+
+  local TextLabel = Custom:Create("TextLabel", {
+    Font = Enum.Font.GothamBold,
+    Text = Title,
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 14,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundTransparency = 0.9990000128746033,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, -100, 1, 0),
+    Position = UDim2.new(0, 10, 0, 0)
+  }, Top)
+
+  Custom:Create("UICorner", {}, Top)
+
+  local TextLabel1 = Custom:Create("TextLabel", {
+    Font = Enum.Font.GothamBold,
+    Text = Description,
+    TextColor3 = Custom.ColorRGB,
+    TextSize = 14,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundTransparency = 0.9990000128746033,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, -(TextLabel.TextBounds.X + 104), 1, 0),
+    Position = UDim2.new(0, TextLabel.TextBounds.X + 15, 0, 0)
+  }, Top)
+
+  Custom:Create("UIStroke", {
+    Color = Custom.ColorRGB,
+    Thickness = 0.4
+  }, TextLabel1)
+
+  local Close = Custom:Create("TextButton", {
+    Font = Enum.Font.SourceSans,
+    Text = "X",
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 18,
+    AnchorPoint = Vector2.new(1, 0.5),
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundTransparency = 0.9990000128746033,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Position = UDim2.new(1, -8, 0.5, 0),
+    Size = UDim2.new(0, 25, 0, 25),
+    Name = "Close"
+  }, Top)
+
+  local Min = Custom:Create("TextButton", {
+    Font = Enum.Font.SourceSans,
+    Text = "-", 
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 18,
+    AnchorPoint = Vector2.new(1, 0.5),
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundTransparency = 0.9990000128746033,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Position = UDim2.new(1, -42, 0.5, 0),
+    Size = UDim2.new(0, 25, 0, 25),
+    Name = "Min"
+}, Top)
+
+  local LayersTab = Custom:Create("Frame", {
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundTransparency = 0.9990000128746033,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 9, 0, 50),
+    Size = UDim2.new(0, TabWidth, 1, -59),
+    Name = "LayersTab"
+  }, Main)
+
+  Custom:Create("UICorner", {
+    CornerRadius = UDim.new(0, 2)
+  }, LayersTab)
+
+  Custom:Create("Frame", {
+    AnchorPoint = Vector2.new(0.5, 0),
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundTransparency = 0.85,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Position = UDim2.new(0.5, 0, 0, 38),
+    Size = UDim2.new(1, 0, 0, 1),
+    Name = "DecideFrame"
+  }, Main)
+
+  local Layers = Custom:Create("Frame", {
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundTransparency = 0.9990000128746033,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, TabWidth + 18, 0, 50),
+    Size = UDim2.new(1, -(TabWidth + 9 + 18), 1, -59),
+    Name = "Layers"
+  }, Main)
+
+  Custom:Create("UICorner", {
+    CornerRadius = UDim.new(0, 2)
+  }, Layers)
+
+  local NameTab = Custom:Create("TextLabel", {
+    Font = Enum.Font.GothamBold,
+    Text = "",
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 24,
+    TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundTransparency = 0.9990000128746033,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 30),
+    Name = "NameTab"
+  }, Layers)
+
+  local LayersReal = Custom:Create("Frame", {
+    AnchorPoint = Vector2.new(0, 1),
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundTransparency = 0.9990000128746033,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+    Position = UDim2.new(0, 0, 1, 0),
+    Size = UDim2.new(1, 0, 1, -33),
+    Name = "LayersReal"
+  }, Layers)
+
+  local LayersFolder = Custom:Create("Folder", {
+    Name = "LayersFolder"
+  }, LayersReal)
+
+  local LayersPageLayout = Custom:Create("UIPageLayout", {
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    Name = "LayersPageLayout",
+    TweenTime = 0.5,
+    EasingDirection = Enum.EasingDirection.InOut,
+    EasingStyle = Enum.EasingStyle.Quad
+  }, LayersFolder)
+
+  local ScrollTab = Custom:Create("ScrollingFrame", {
+    CanvasSize = UDim2.new(0, 0, 2.10000002, 0),
+    ScrollBarImageColor3 = Color3.fromRGB(0, 0, 0),
+    ScrollBarThickness = 0,
+    Active = true,
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BackgroundTransparency = 0.9990000128746033,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 1, -10),
+    Name = "ScrollTab"
+  }, LayersTab)
+
+  local UIListLayout = Custom:Create("UIListLayout", {
+    Padding = UDim.new(0, 0),
+    SortOrder = Enum.SortOrder.LayoutOrder
+  }, ScrollTab)
+
+  local function UpdateSize()
+    local _Total = 0
+
+		for _, v in pairs(ScrollTab:GetChildren()) do
+			if v.Name ~= "UIListLayout" then
+				_Total = _Total + 3 + v.Size.Y.Offset
+			end
+		end
+
+		ScrollTab.CanvasSize = UDim2.new(0, 0, 0, _Total)
+  end
+
+  ScrollTab.ChildAdded:Connect(UpdateSize)
+  ScrollTab.ChildRemoved:Connect(UpdateSize)
+
+  Min.Activated:Connect(function()
+		CircleClick(Min, Player:GetMouse().X, Player:GetMouse().Y)
+		DropShadowHolder.Visible = false
+
+		if not Open_Close.Visible then Open_Close.Visible = true end
+	end)
+
+  Open_Close.Activated:Connect(function()
+		DropShadowHolder.Visible = true
+		if Open_Close.Visible then Open_Close.Visible = false end
+	end)
+
+  Close.Activated:Connect(function()
+		CircleClick(Close, Player:GetMouse().X, Player:GetMouse().Y)
+    if SpeedHubXGui then SpeedHubXGui:Destroy() end
+		if not Speed_Library.Unloaded then Speed_Library.Unloaded = true end
+	end)
+
+  DropShadowHolder.Size = UDim2.new(0, 115 + TextLabel.TextBounds.X + 1 + TextLabel1.TextBounds.X, 0, 350)
+	MakeDraggable(Top, DropShadowHolder)
+
+
+  -- /// Blur
+
+  local MoreBlur = Custom:Create("Frame", {
+    AnchorPoint = Vector2.new(1, 1),
+    BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+    BackgroundTransparency = 1,
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+    Position = UDim2.new(1, 8, 1, 8),
+    Size = UDim2.new(1, 154, 1, 54),
+    Visible = false,
+    Name = "MoreBlur"
+  }, Layers)
+
+  local DropShadowHolder1 = Custom:Create("Frame", {
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 1, 0),
+    ZIndex = 0,
+    Name = "DropShadowHolder"
+  }, MoreBlur)
+
+  local DropShadow1 = Custom:Create("ImageLabel", {
+    Image = "",
+    ImageColor3 = Color3.fromRGB(0, 0, 0),
+    ImageTransparency = 0.5,
+    ScaleType = Enum.ScaleType.Slice,
+    SliceCenter = Rect.new(49, 49, 450, 450),
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = UDim2.new(1, 35, 1, 35),
+    ZIndex = 0,
+    Name = "DropShadow"
+  }, DropShadowHolder1)
+
+  Custom:Create("UICorner", {}, MoreBlur)
+
+  local ConnectButton = Custom:Create("TextButton", {
+		Font = Enum.Font.SourceSans,
+		Text = "",
+		TextColor3 = Color3.fromRGB(0, 0, 0),
+		TextSize = 14,
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundTransparency = 0.999,
+		BorderColor3 = Color3.fromRGB(0, 0, 0),
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 1, 0),
+		Name = "ConnectButton",
+	}, MoreBlur)
+
+  local DropdownSelect = Custom:Create("Frame", {
+    AnchorPoint = Vector2.new(1, 0.5),
+    BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+    BorderColor3 = Color3.fromRGB(0, 0, 0),
+    BorderSizePixel = 0,
+    LayoutOrder = 1,
+    Position = UDim2.new(1, 172, 0.5, 0),
+    Size = UDim2.new(0, 160, 1, -16),
+    Name = "DropdownSelect",
+    ClipsDescendants = true,
+  }, MoreBlur)
+
+  ConnectButton.Activated:Connect(function()
+    if MoreBlur.Visible then
+      local tweenInfo = TweenInfo.new(0.2)
+
+      local _Hide = TweenService:Create(MoreBlur, tweenInfo, {BackgroundTransparency = 0.999})
+      local _Move = TweenService:Create(DropdownSelect, tweenInfo, {Position = UDim2.new(1, 172, 0.5, 0)})
+
+      _Hide:Play()
+      _Move:Play()
+        
+      task.wait(0.2)
+      MoreBlur.Visible = false
+    end
+  end)
+
+  Custom:Create("UICorner", {
+    CornerRadius = UDim.new(0, 3),
+    Parent = DropdownSelect
+  })
+
+  Custom:Create("UIStroke", {
+    Color = Color3.fromRGB(255, 255, 255),
+    Thickness = 2.5,
+    Transparency = 0.8,
+    Parent = DropdownSelect
+  })
+
+  local DropdownSelectReal = Custom:Create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 0.999,
+		BorderColor3 = Color3.fromRGB(0, 0, 0),
+		BorderSizePixel = 0,
+		LayoutOrder = 1,
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(1, -10, 1, -10),
+		Name = "DropdownSelectReal",
+		Parent = DropdownSelect
+	})
+
+  local DropdownFolder = Custom:Create("Folder", {
+		Name = "DropdownFolder",
+		Parent = DropdownSelectReal
+	})
+
+  local DropPageLayout = Custom:Create("UIPageLayout", {
+    EasingDirection = Enum.EasingDirection.InOut,
+    EasingStyle = Enum.EasingStyle.Quad,
+    TweenTime = 0.01,
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    Archivable = false,
+    Name = "DropPageLayout",
+    Parent = DropdownFolder
+  })
+
+  -- /// Create Tab
+
+  local Tabs = {}
+  local CountTab = 0
+  local CountDropdown = 0
+  function Tabs:CreateTab(Config)
+    local _Name = Config[1] or Config.Name or "" 
+    local Icon = Config[2] or Config.Icon or ""
     
-    local allSeeds = findAllSeeds()
-    local remotes = findBuyRemote()
-    
-    if #remotes == 0 then
-        log("Tidak menemukan remote spesifik, mencoba semua remote...")
-        for _, child in pairs(ReplicatedStorage:GetDescendants()) do
-            if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
-                table.insert(remotes, child)
-            end
+    local ScrolLayers = Custom:Create("ScrollingFrame", {
+			ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80),
+			ScrollBarThickness = 0,
+			Active = true,
+			LayoutOrder = CountTab,
+			BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+			BackgroundTransparency = 0.999,
+			BorderColor3 = Color3.fromRGB(0, 0, 0),
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, 0, 1, 0),
+			Name = "ScrolLayers",
+			Parent = LayersFolder
+		})
+
+    Custom:Create("UIListLayout", {
+      Padding = UDim.new(0, 3),
+      SortOrder = Enum.SortOrder.LayoutOrder,
+      Parent = ScrolLayers
+    })
+
+    local Tab = Custom:Create("Frame", {
+			BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+			BackgroundTransparency = CountTab == 0 and 0.92 or 0.999,
+			BorderColor3 = Color3.fromRGB(0, 0, 0),
+			BorderSizePixel = 0,
+			LayoutOrder = CountTab,
+			Size = UDim2.new(1, 0, 0, 30),
+			Name = "Tab",
+			Parent = ScrollTab
+		})
+
+    Custom:Create("UICorner", {
+      CornerRadius = UDim.new(0, 4),
+      Parent = Tab
+    })
+
+    local TabButton = Custom:Create("TextButton", {
+      Font = Enum.Font.GothamBold,
+      Text = "",
+      TextColor3 = Color3.fromRGB(255, 255, 255),
+      TextSize = 13,
+      TextXAlignment = Enum.TextXAlignment.Left,
+      BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+      BackgroundTransparency = 0.999,
+      BorderColor3 = Color3.fromRGB(0, 0, 0),
+      BorderSizePixel = 0,
+      Size = UDim2.new(1, 0, 1, 0),
+      Name = "TabButton",
+    }, Tab)
+
+    Custom:Create("TextLabel", {
+      Font = Enum.Font.GothamBold,
+      Text = _Name,
+      TextColor3 = Color3.fromRGB(255, 255, 255),
+      TextSize = 13,
+      TextXAlignment = Enum.TextXAlignment.Left,
+      BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+      BackgroundTransparency = 0.999,
+      BorderColor3 = Color3.fromRGB(0, 0, 0),
+      BorderSizePixel = 0,
+      Size = UDim2.new(1, 0, 1, 0),
+      Position = UDim2.new(0, 30, 0, 0),
+      Name = "TabName",
+    }, Tab)
+
+    Custom:Create("ImageLabel", {
+      Image = Icon,
+      BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+      BackgroundTransparency = 0.999,
+      BorderColor3 = Color3.fromRGB(0, 0, 0),
+      BorderSizePixel = 0,
+      Position = UDim2.new(0, 9, 0, 7),
+      Size = UDim2.new(0, 16, 0, 16),
+      Name = "FeatureImg",
+    }, Tab)
+
+    if CountTab == 0 then
+      LayersPageLayout:JumpToIndex(0)
+      NameTab.Text = _Name
+  
+      local ChooseFrame = Custom:Create("Frame", {
+        BackgroundColor3 = Custom.ColorRGB,
+        BorderColor3 = Color3.fromRGB(0, 0, 0),
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 2, 0, 9),
+        Size = UDim2.new(0, 1, 0, 12),
+        Name = "ChooseFrame",
+      }, Tab)
+  
+      Custom:Create("UIStroke", {
+        Color = Custom.ColorRGB,
+        Thickness = 1.6,
+      }, ChooseFrame)
+  
+      Custom:Create("UICorner", {}, ChooseFrame)
+    end
+
+    TabButton.Activated:Connect(function()
+      CircleClick(TabButton, Player:GetMouse().X, Player:GetMouse().Y)
+      local FrameChoose = nil
+
+      for _, s in pairs(ScrollTab:GetChildren()) do
+        for _, v in pairs(s:GetChildren()) do
+          if v.Name == "ChooseFrame" then
+            FrameChoose = v
+            break
+          end
         end
-    end
 
-    -- Saring benih berdasarkan filter
-    local filteredSeeds = {}
-    for _, seedName in ipairs(allSeeds) do
-        if matchesFilters(seedName) then
-            table.insert(filteredSeeds, seedName)
+        if FrameChoose then break end
+      end
+  
+      if FrameChoose and Tab.LayoutOrder ~= LayersPageLayout.CurrentPage.LayoutOrder then
+        for _, TabFrame in pairs(ScrollTab:GetChildren()) do
+          if TabFrame.Name == "Tab" then
+            TweenService:Create(TabFrame, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.InOut), {BackgroundTransparency = 0.999}):Play()
+          end
         end
-    end
+  
+        local _TabT = TweenService:Create(Tab, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.InOut), {BackgroundTransparency = 0.92})
+        local _FTween = TweenService:Create(FrameChoose, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), { Position = UDim2.new(0, 2, 0, 9 + (33 * Tab.LayoutOrder)) })
 
-    if #filteredSeeds == 0 then
-        local msg = "Tidak ada benih yang sesuai filter!"
-        log(msg)
-        notify("Auto Buy Seeds", msg, 3)
-        return 0, 0, 0
-    end
-
-    notify("Auto Buy Seeds", string.format("Membeli %d jenis benih sesuai filter...", #filteredSeeds), 3)
-
-    local totalBought = 0
-    local totalFailed = 0
-
-    for _, seedName in ipairs(filteredSeeds) do
-        local bought = false
-        local retries = 0
-        local rarity = SEED_RARITY[seedName] or "Unknown"
-
-        while not bought and retries < CONFIG.MAX_RETRIES do
-            for _, remote in pairs(remotes) do
-                local success = pcall(function()
-                    if remote:IsA("RemoteEvent") then
-                        remote:FireServer("Buy", seedName, CONFIG.BUY_QUANTITY)
-                        remote:FireServer("BuySeed", seedName, CONFIG.BUY_QUANTITY)
-                        remote:FireServer("Purchase", seedName, CONFIG.BUY_QUANTITY)
-                        remote:FireServer("PurchaseItem", {
-                            Item = seedName,
-                            Quantity = CONFIG.BUY_QUANTITY,
-                            Type = "Seed"
-                        })
-                        remote:FireServer(seedName, CONFIG.BUY_QUANTITY)
-                        remote:FireServer({
-                            Action = "Buy",
-                            ItemName = seedName,
-                            Amount = CONFIG.BUY_QUANTITY
-                        })
-                    elseif remote:IsA("RemoteFunction") then
-                        remote:InvokeServer("Buy", seedName, CONFIG.BUY_QUANTITY)
-                        remote:InvokeServer("BuySeed", seedName, CONFIG.BUY_QUANTITY)
-                        remote:InvokeServer("Purchase", seedName, CONFIG.BUY_QUANTITY)
-                    end
-                end)
-
-                if success then
-                    bought = true
-                    totalBought = totalBought + 1
-                    log(string.format("✅ Berhasil beli: %s [%s]", seedName, rarity))
-                    break
-                end
-            end
-
-            if not bought then
-                retries = retries + 1
-                if CONFIG.AUTO_RETRY and retries < CONFIG.MAX_RETRIES then
-                    task.wait(0.4)
-                end
-            end
-        end
-
-        if not bought then
-            totalFailed = totalFailed + 1
-            log(string.format("❌ Gagal beli: %s [%s]", seedName, rarity))
-        end
-
-        task.wait(CONFIG.DELAY_BETWEEN_PURCHASES)
-    end
-
-    local summary = string.format("Selesai! Berhasil: %d | Gagal: %d | Total: %d", totalBought, totalFailed, #filteredSeeds)
-    log(summary)
-    notify("Auto Buy Seeds", summary, 4)
-    return totalBought, totalFailed, #filteredSeeds
-end
-
--- ═══════════════════════════════════════════════
--- GUI dengan Dukungan Tab Filter
--- ═══════════════════════════════════════════════
-local function createGUI()
-    if CoreGui:FindFirstChild("AutoBuySeedsGUI") then
-        CoreGui:FindFirstChild("AutoBuySeedsGUI"):Destroy()
-    end
-    
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "AutoBuySeedsGUI"
-    ScreenGui.ResetOnSpawn = false
-    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    
-    -- Main Frame
-    local MainFrame = Instance.new("Frame")
-    MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, 320, 0, 380)
-    MainFrame.Position = UDim2.new(0.02, 0, 0.25, 0)
-    MainFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
-    MainFrame.BorderSizePixel = 0
-    MainFrame.Active = true
-    MainFrame.Draggable = true
-    MainFrame.Parent = ScreenGui
-    
-    local MainCorner = Instance.new("UICorner")
-    MainCorner.CornerRadius = UDim.new(0, 10)
-    MainCorner.Parent = MainFrame
-    
-    local MainStroke = Instance.new("UIStroke")
-    MainStroke.Color = Color3.fromRGB(80, 200, 120)
-    MainStroke.Thickness = 2
-    MainStroke.Parent = MainFrame
-    
-    -- Title Bar
-    local TitleBar = Instance.new("Frame")
-    TitleBar.Name = "TitleBar"
-    TitleBar.Size = UDim2.new(1, 0, 0, 36)
-    TitleBar.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
-    TitleBar.BorderSizePixel = 0
-    TitleBar.Parent = MainFrame
-    
-    local TitleCorner = Instance.new("UICorner")
-    TitleCorner.CornerRadius = UDim.new(0, 10)
-    TitleCorner.Parent = TitleBar
-    
-    local TitleFix = Instance.new("Frame")
-    TitleFix.Size = UDim2.new(1, 0, 0.5, 0)
-    TitleFix.Position = UDim2.new(0, 0, 0.5, 0)
-    TitleFix.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
-    TitleFix.BorderSizePixel = 0
-    TitleFix.Parent = TitleBar
-    
-    local TitleLabel = Instance.new("TextLabel")
-    TitleLabel.Size = UDim2.new(1, -40, 1, 0)
-    TitleLabel.Position = UDim2.new(0, 10, 0, 0)
-    TitleLabel.BackgroundTransparency = 1
-    TitleLabel.Text = "🌱 Auto Buy Seeds (Filter)"
-    TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TitleLabel.TextSize = 14
-    TitleLabel.Font = Enum.Font.GothamBold
-    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    TitleLabel.Parent = TitleBar
-    
-    local CloseBtn = Instance.new("TextButton")
-    CloseBtn.Size = UDim2.new(0, 26, 0, 26)
-    CloseBtn.Position = UDim2.new(1, -30, 0, 5)
-    CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-    CloseBtn.Text = "X"
-    CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseBtn.TextSize = 13
-    CloseBtn.Font = Enum.Font.GothamBold
-    CloseBtn.BorderSizePixel = 0
-    CloseBtn.Parent = TitleBar
-    
-    local CloseBtnCorner = Instance.new("UICorner")
-    CloseBtnCorner.CornerRadius = UDim.new(0, 6)
-    CloseBtnCorner.Parent = CloseBtn
-
-    -- Tab Navigation
-    local TabBar = Instance.new("Frame")
-    TabBar.Size = UDim2.new(1, -16, 0, 30)
-    TabBar.Position = UDim2.new(0, 8, 0, 42)
-    TabBar.BackgroundTransparency = 1
-    TabBar.Parent = MainFrame
-
-    local function createTabBtn(name, text, posX, widthRatio)
-        local btn = Instance.new("TextButton")
-        btn.Name = name
-        btn.Size = UDim2.new(widthRatio, -4, 1, 0)
-        btn.Position = UDim2.new(posX, 0, 0, 0)
-        btn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-        btn.Text = text
-        btn.TextColor3 = Color3.fromRGB(200, 200, 200)
-        btn.TextSize = 12
-        btn.Font = Enum.Font.GothamBold
-        btn.BorderSizePixel = 0
-        btn.Parent = TabBar
-        local c = Instance.new("UICorner")
-        c.CornerRadius = UDim.new(0, 6)
-        c.Parent = btn
-        return btn
-    end
-
-    local TabMainBtn = createTabBtn("TabMain", "🛒 Beli", 0, 0.33)
-    local TabRarityBtn = createTabBtn("TabRarity", "⭐ Rarity", 0.33, 0.33)
-    local TabSeedBtn = createTabBtn("TabSeed", "🌱 Benih", 0.66, 0.34)
-
-    -- Container Tabs
-    local ContainerMain = Instance.new("Frame")
-    ContainerMain.Size = UDim2.new(1, -16, 1, -82)
-    ContainerMain.Position = UDim2.new(0, 8, 0, 76)
-    ContainerMain.BackgroundTransparency = 1
-    ContainerMain.Parent = MainFrame
-
-    local ContainerRarity = Instance.new("Frame")
-    ContainerRarity.Size = UDim2.new(1, -16, 1, -82)
-    ContainerRarity.Position = UDim2.new(0, 8, 0, 76)
-    ContainerRarity.BackgroundTransparency = 1
-    ContainerRarity.Visible = false
-    ContainerRarity.Parent = MainFrame
-
-    local ContainerSeed = Instance.new("Frame")
-    ContainerSeed.Size = UDim2.new(1, -16, 1, -82)
-    ContainerSeed.Position = UDim2.new(0, 8, 0, 76)
-    ContainerSeed.BackgroundTransparency = 1
-    ContainerSeed.Visible = false
-    ContainerSeed.Parent = MainFrame
-
-    -- Helper Switch Tab
-    local function switchTab(tabName)
-        ContainerMain.Visible = (tabName == "Main")
-        ContainerRarity.Visible = (tabName == "Rarity")
-        ContainerSeed.Visible = (tabName == "Seed")
-
-        TabMainBtn.BackgroundColor3 = (tabName == "Main") and Color3.fromRGB(50, 180, 90) or Color3.fromRGB(45, 45, 60)
-        TabMainBtn.TextColor3 = (tabName == "Main") and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(180, 180, 180)
-
-        TabRarityBtn.BackgroundColor3 = (tabName == "Rarity") and Color3.fromRGB(50, 180, 90) or Color3.fromRGB(45, 45, 60)
-        TabRarityBtn.TextColor3 = (tabName == "Rarity") and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(180, 180, 180)
-
-        TabSeedBtn.BackgroundColor3 = (tabName == "Seed") and Color3.fromRGB(50, 180, 90) or Color3.fromRGB(45, 45, 60)
-        TabSeedBtn.TextColor3 = (tabName == "Seed") and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(180, 180, 180)
-    end
-
-    TabMainBtn.MouseButton1Click:Connect(function() switchTab("Main") end)
-    TabRarityBtn.MouseButton1Click:Connect(function() switchTab("Rarity") end)
-    TabSeedBtn.MouseButton1Click:Connect(function() switchTab("Seed") end)
-    switchTab("Main")
-
-    -- ───────────────────────────────────────────
-    -- [TAB 1: UTAMA]
-    -- ───────────────────────────────────────────
-    local StatusLabel = Instance.new("TextLabel")
-    StatusLabel.Size = UDim2.new(1, 0, 0, 24)
-    StatusLabel.Position = UDim2.new(0, 0, 0, 0)
-    StatusLabel.BackgroundTransparency = 1
-    StatusLabel.Text = "Status: Siap"
-    StatusLabel.TextColor3 = Color3.fromRGB(180, 255, 180)
-    StatusLabel.TextSize = 13
-    StatusLabel.Font = Enum.Font.Gotham
-    StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-    StatusLabel.Parent = ContainerMain
-
-    local FilterSummaryLabel = Instance.new("TextLabel")
-    FilterSummaryLabel.Size = UDim2.new(1, 0, 0, 36)
-    FilterSummaryLabel.Position = UDim2.new(0, 0, 0, 24)
-    FilterSummaryLabel.BackgroundTransparency = 1
-    FilterSummaryLabel.Text = "Filter Rarity: Semua\nFilter Benih: Semua"
-    FilterSummaryLabel.TextColor3 = Color3.fromRGB(255, 215, 100)
-    FilterSummaryLabel.TextSize = 11
-    FilterSummaryLabel.Font = Enum.Font.Gotham
-    FilterSummaryLabel.TextXAlignment = Enum.TextXAlignment.Left
-    FilterSummaryLabel.TextWrapped = true
-    FilterSummaryLabel.Parent = ContainerMain
-
-    local function updateFilterSummary()
-        local rCount = 0
-        local rList = {}
-        for r, _ in pairs(CONFIG.SELECTED_RARITIES) do
-            rCount = rCount + 1
-            table.insert(rList, r)
-        end
-
-        local nCount = 0
-        for _, _ in pairs(CONFIG.SELECTED_NAMES) do
-            nCount = nCount + 1
-        end
-
-        local rText = (rCount == 0) and "Semua" or table.concat(rList, ", ")
-        local nText = (nCount == 0) and "Semua" or (nCount .. " jenis dipilih")
-        FilterSummaryLabel.Text = string.format("Filter Rarity: %s\nFilter Benih: %s", rText, nText)
-    end
-
-    local BuyAllBtn = Instance.new("TextButton")
-    BuyAllBtn.Size = UDim2.new(1, 0, 0, 42)
-    BuyAllBtn.Position = UDim2.new(0, 0, 0, 68)
-    BuyAllBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 90)
-    BuyAllBtn.Text = "🛒 Beli Benih (Sesuai Filter)"
-    BuyAllBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    BuyAllBtn.TextSize = 14
-    BuyAllBtn.Font = Enum.Font.GothamBold
-    BuyAllBtn.BorderSizePixel = 0
-    BuyAllBtn.Parent = ContainerMain
-    local BuyAllCorner = Instance.new("UICorner")
-    BuyAllCorner.CornerRadius = UDim.new(0, 8)
-    BuyAllCorner.Parent = BuyAllBtn
-
-    local LoopBtn = Instance.new("TextButton")
-    LoopBtn.Size = UDim2.new(1, 0, 0, 36)
-    LoopBtn.Position = UDim2.new(0, 0, 0, 118)
-    LoopBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-    LoopBtn.Text = "🔄 Loop Mode: OFF"
-    LoopBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-    LoopBtn.TextSize = 13
-    LoopBtn.Font = Enum.Font.GothamBold
-    LoopBtn.BorderSizePixel = 0
-    LoopBtn.Parent = ContainerMain
-    local LoopCorner = Instance.new("UICorner")
-    LoopCorner.CornerRadius = UDim.new(0, 8)
-    LoopCorner.Parent = LoopBtn
-
-    local InfoLabel = Instance.new("TextLabel")
-    InfoLabel.Size = UDim2.new(1, 0, 0, 30)
-    InfoLabel.Position = UDim2.new(0, 0, 1, -30)
-    InfoLabel.BackgroundTransparency = 1
-    InfoLabel.Text = "Delay: " .. CONFIG.DELAY_BETWEEN_PURCHASES .. "s | Retry: " .. CONFIG.MAX_RETRIES .. "x"
-    InfoLabel.TextColor3 = Color3.fromRGB(140, 140, 160)
-    InfoLabel.TextSize = 11
-    InfoLabel.Font = Enum.Font.Gotham
-    InfoLabel.TextXAlignment = Enum.TextXAlignment.Left
-    InfoLabel.Parent = ContainerMain
-
-    -- ───────────────────────────────────────────
-    -- [TAB 2: FILTER RARITY]
-    -- ───────────────────────────────────────────
-    local RaritySubTitle = Instance.new("TextLabel")
-    RaritySubTitle.Size = UDim2.new(1, 0, 0, 22)
-    RaritySubTitle.BackgroundTransparency = 1
-    RaritySubTitle.Text = "Pilih Rarity yang ingin dibeli:"
-    RaritySubTitle.TextColor3 = Color3.fromRGB(200, 200, 220)
-    RaritySubTitle.TextSize = 12
-    RaritySubTitle.Font = Enum.Font.GothamBold
-    RaritySubTitle.TextXAlignment = Enum.TextXAlignment.Left
-    RaritySubTitle.Parent = ContainerRarity
-
-    local RarityResetBtn = Instance.new("TextButton")
-    RarityResetBtn.Size = UDim2.new(1, 0, 0, 28)
-    RarityResetBtn.Position = UDim2.new(0, 0, 0, 24)
-    RarityResetBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-    RarityResetBtn.Text = "🔄 Reset Rarity (Beli Semua)"
-    RarityResetBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
-    RarityResetBtn.TextSize = 12
-    RarityResetBtn.Font = Enum.Font.Gotham
-    RarityResetBtn.BorderSizePixel = 0
-    RarityResetBtn.Parent = ContainerRarity
-    local rrc = Instance.new("UICorner")
-    rrc.CornerRadius = UDim.new(0, 6)
-    rrc.Parent = RarityResetBtn
-
-    local RarityListFrame = Instance.new("Frame")
-    RarityListFrame.Size = UDim2.new(1, 0, 1, -60)
-    RarityListFrame.Position = UDim2.new(0, 0, 0, 58)
-    RarityListFrame.BackgroundTransparency = 1
-    RarityListFrame.Parent = ContainerRarity
-
-    local rarities = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"}
-    local rarityButtons = {}
-
-    local function refreshRarityButtons()
-        for rName, btn in pairs(rarityButtons) do
-            local isSelected = CONFIG.SELECTED_RARITIES[rName] == true
-            local col = RARITY_COLORS[rName] or Color3.fromRGB(180, 180, 180)
-            if isSelected then
-                btn.BackgroundColor3 = col
-                btn.TextColor3 = Color3.fromRGB(20, 20, 20)
-                btn.Text = "✓ " .. rName .. " (Dipilih)"
-            else
-                btn.BackgroundColor3 = Color3.fromRGB(38, 38, 50)
-                btn.TextColor3 = col
-                btn.Text = "○ " .. rName
-            end
-        end
-        updateFilterSummary()
-    end
-
-    RarityResetBtn.MouseButton1Click:Connect(function()
-        CONFIG.SELECTED_RARITIES = {}
-        refreshRarityButtons()
-        notify("Filter Rarity", "Rarity di-reset: Beli semua rarity", 2)
+        _TabT:Play()
+        _FTween:Play()
+  
+        LayersPageLayout:JumpToIndex(Tab.LayoutOrder)
+  
+        task.wait(0.05)
+        NameTab.Text = _Name
+  
+        TweenService:Create(FrameChoose, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {Size = UDim2.new(0, 1, 0, 20)}):Play()
+  
+        task.wait(0.2)
+        TweenService:Create(FrameChoose, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {Size = UDim2.new(0, 1, 0, 12)}):Play()
+      end
     end)
 
-    for i, rName in ipairs(rarities) do
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, 0, 0, 32)
-        btn.Position = UDim2.new(0, 0, 0, (i - 1) * 36)
-        btn.BackgroundColor3 = Color3.fromRGB(38, 38, 50)
-        btn.Text = "○ " .. rName
-        btn.TextColor3 = RARITY_COLORS[rName]
-        btn.TextSize = 12
-        btn.Font = Enum.Font.GothamBold
-        btn.BorderSizePixel = 0
-        btn.Parent = RarityListFrame
-        local c = Instance.new("UICorner")
-        c.CornerRadius = UDim.new(0, 6)
-        c.Parent = btn
+    --- /// Section
+   
+    local Sections, CountSection = {}, 0
 
-        btn.MouseButton1Click:Connect(function()
-            if CONFIG.SELECTED_RARITIES[rName] then
-                CONFIG.SELECTED_RARITIES[rName] = nil
-            else
-                CONFIG.SELECTED_RARITIES[rName] = true
-            end
-            refreshRarityButtons()
-        end)
-
-        rarityButtons[rName] = btn
-    end
-
-    -- ───────────────────────────────────────────
-    -- [TAB 3: FILTER NAMA BENIH]
-    -- ───────────────────────────────────────────
-    local SeedHeader = Instance.new("Frame")
-    SeedHeader.Size = UDim2.new(1, 0, 0, 28)
-    SeedHeader.BackgroundTransparency = 1
-    SeedHeader.Parent = ContainerSeed
-
-    local ResetSeedBtn = Instance.new("TextButton")
-    ResetSeedBtn.Size = UDim2.new(1, 0, 1, 0)
-    ResetSeedBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-    ResetSeedBtn.Text = "🔄 Reset Benih (Beli Semua)"
-    ResetSeedBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
-    ResetSeedBtn.TextSize = 12
-    ResetSeedBtn.Font = Enum.Font.Gotham
-    ResetSeedBtn.BorderSizePixel = 0
-    ResetSeedBtn.Parent = SeedHeader
-    local rsc = Instance.new("UICorner")
-    rsc.CornerRadius = UDim.new(0, 6)
-    rsc.Parent = ResetSeedBtn
-
-    local SeedScroll = Instance.new("ScrollingFrame")
-    SeedScroll.Size = UDim2.new(1, 0, 1, -34)
-    SeedScroll.Position = UDim2.new(0, 0, 0, 34)
-    SeedScroll.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
-    SeedScroll.BorderSizePixel = 0
-    SeedScroll.ScrollBarThickness = 5
-    SeedScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    SeedScroll.Parent = ContainerSeed
-    local sc = Instance.new("UICorner")
-    sc.CornerRadius = UDim.new(0, 6)
-    sc.Parent = SeedScroll
-
-    local seedRowButtons = {}
-
-    local function refreshSeedButtons()
-        for sName, btn in pairs(seedRowButtons) do
-            local isSelected = CONFIG.SELECTED_NAMES[sName] == true
-            local r = SEED_RARITY[sName] or "Common"
-            local col = RARITY_COLORS[r] or Color3.fromRGB(180, 180, 180)
-            if isSelected then
-                btn.BackgroundColor3 = Color3.fromRGB(40, 100, 60)
-                btn.Text = "✓ " .. sName .. " [" .. r .. "]"
-                btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            else
-                btn.BackgroundColor3 = Color3.fromRGB(32, 32, 42)
-                btn.Text = "○ " .. sName .. " [" .. r .. "]"
-                btn.TextColor3 = col
-            end
+    function Sections:AddSection(Title, OpenSection)
+      local Title = Title or ""
+      local OpenSection = OpenSection or false
+  
+      local Section = Custom:Create("Frame", {
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundTransparency = 0.999,
+        BorderColor3 = Color3.fromRGB(0, 0, 0),
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        LayoutOrder = CountSection,
+        Size = UDim2.new(1, 0, 0, 30),
+        Name = "Section"
+      }, ScrolLayers)
+  
+      local SectionReal = Custom:Create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0),
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundTransparency = 0.935,
+        BorderColor3 = Color3.fromRGB(0, 0, 0),
+        BorderSizePixel = 0,
+        LayoutOrder = 1,
+        Position = UDim2.new(0.5, 0, 0, 0),
+        Size = UDim2.new(1, 1, 0, 30),
+        Name = "SectionReal"
+      }, Section)
+  
+      Custom:Create("UICorner", {
+        CornerRadius = UDim.new(0, 4)
+      }, SectionReal)
+  
+      local SectionButton = Custom:Create("TextButton", {
+        Font = Enum.Font.SourceSans,
+        Text = "",
+        TextColor3 = Color3.fromRGB(0, 0, 0),
+        TextSize = 14,
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundTransparency = 0.9990000128746033,
+        BorderColor3 = Color3.fromRGB(0, 0, 0),
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 1, 0),
+        Name = "SectionButton"
+      }, SectionReal)
+  
+      local FeatureFrame = Custom:Create("Frame", {
+        AnchorPoint = Vector2.new(1, 0.5),
+        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+        BackgroundTransparency = 0.9990000128746033,
+        BorderColor3 = Color3.fromRGB(0, 0, 0),
+        BorderSizePixel = 0,
+        Position = UDim2.new(1, -5, 0.5, 0),
+        Size = UDim2.new(0, 20, 0, 20),
+        Name = "FeatureFrame"
+      }, SectionReal)
+  
+      local FeatureImg = Custom:Create("ImageLabel", {
+        Image = "rbxassetid://125609963478878",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundTransparency = 0.9990000128746033,
+        BorderColor3 = Color3.fromRGB(0, 0, 0),
+        BorderSizePixel = 0,
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        Rotation = -90,
+        Size = UDim2.new(1, 6, 1, 6),
+        Name = "FeatureImg"
+      }, FeatureFrame)
+  
+      local SectionTitle = Custom:Create("TextLabel", {
+        Font = Enum.Font.GothamBold,
+        Text = Title,
+        TextColor3 = Color3.fromRGB(230, 230, 230),
+        TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        AnchorPoint = Vector2.new(0, 0.5),
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundTransparency = 0.9990000128746033,
+        BorderColor3 = Color3.fromRGB(0, 0, 0),
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 10, 0.5, 0),
+        Size = UDim2.new(1, -50, 0, 13),
+        Name = "SectionTitle"
+      }, SectionReal)
+  
+      local SectionDecideFrame = Custom:Create("Frame", {
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BorderColor3 = Color3.fromRGB(0, 0, 0),
+        BorderSizePixel = 0,
+        AnchorPoint = Vector2.new(0.5, 0),
+        Position = UDim2.new(0.5, 0, 0, 33),
+        Size = UDim2.new(0, 0, 0, 2),
+        Name = "SectionDecideFrame"
+      }, Section)
+      Custom:Create("UICorner", {}, SectionDecideFrame)
+      Custom:Create("UIGradient", {
+        Color = ColorSequence.new{
+          ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 20, 20)),
+          ColorSequenceKeypoint.new(0.5, Custom.ColorRGB),
+          ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 20, 20))
+        }
+      }, SectionDecideFrame)
+  
+      local SectionAdd = Custom:Create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0),
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundTransparency = 0.9990000128746033,
+        BorderColor3 = Color3.fromRGB(0, 0, 0),
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        LayoutOrder = 1,
+        Position = UDim2.new(0.5, 0, 0, 38),
+        Size = UDim2.new(1, 0, 0, 100),
+        Name = "SectionAdd"
+      }, Section)
+  
+      Custom:Create("UICorner", {
+        CornerRadius = UDim.new(0, 2)
+      }, SectionAdd)
+    
+      Custom:Create("UIListLayout", {
+        Padding = UDim.new(0, 3),
+        SortOrder = Enum.SortOrder.LayoutOrder
+      }, SectionAdd)
+  
+      local function UpdateSizeScroll()
+        local OffsetY = 0
+  
+        for _, child in pairs(ScrolLayers:GetChildren()) do
+          if child.Name ~= "UIListLayout" then
+            OffsetY = OffsetY + 3 + child.Size.Y.Offset
+          end
         end
-        updateFilterSummary()
-    end
-
-    ResetSeedBtn.MouseButton1Click:Connect(function()
-        CONFIG.SELECTED_NAMES = {}
-        refreshSeedButtons()
-        notify("Filter Benih", "Pilihan benih di-reset: Beli semua", 2)
-    end)
-
-    local function populateSeedList()
-        local seeds = findAllSeeds()
-        local yOffset = 4
-        local rowHeight = 30
-        local gap = 4
-
-        for _, seedName in ipairs(seeds) do
-            local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(1, -10, 0, rowHeight)
-            btn.Position = UDim2.new(0, 5, 0, yOffset)
-            btn.BackgroundColor3 = Color3.fromRGB(32, 32, 42)
-            btn.BorderSizePixel = 0
-            btn.TextXAlignment = Enum.TextXAlignment.Left
-            btn.TextSize = 11
-            btn.Font = Enum.Font.Gotham
-            btn.Parent = SeedScroll
-
-            local c = Instance.new("UICorner")
-            c.CornerRadius = UDim.new(0, 5)
-            c.Parent = btn
-
-            local pad = Instance.new("UIPadding")
-            pad.PaddingLeft = UDim.new(0, 8)
-            pad.Parent = btn
-
-            btn.MouseButton1Click:Connect(function()
-                if CONFIG.SELECTED_NAMES[seedName] then
-                    CONFIG.SELECTED_NAMES[seedName] = nil
-                else
-                    CONFIG.SELECTED_NAMES[seedName] = true
-                end
-                refreshSeedButtons()
-            end)
-
-            seedRowButtons[seedName] = btn
-            yOffset = yOffset + rowHeight + gap
+        
+        ScrolLayers.CanvasSize = UDim2.new(0, 0, 0, OffsetY)
+      end
+    
+      local function UpdateSizeSection()
+        if OpenSection then
+          local SectionSizeYWitdh = 38
+  
+          for _, v in pairs(SectionAdd:GetChildren()) do
+            if v.Name ~= "UIListLayout" and v.Name ~= "UICorner" then
+              SectionSizeYWitdh = SectionSizeYWitdh + v.Size.Y.Offset + 3
+            end
+          end
+    
+          TweenService:Create(FeatureFrame, TweenInfo.new(0.1), {Rotation = 90}):Play()
+          TweenService:Create(Section, TweenInfo.new(0.1), {Size = UDim2.new(1, 1, 0, SectionSizeYWitdh)}):Play()
+          TweenService:Create(SectionAdd, TweenInfo.new(0.1), {Size = UDim2.new(1, 0, 0, SectionSizeYWitdh - 38)}):Play()
+          TweenService:Create(SectionDecideFrame, TweenInfo.new(0.1), {Size = UDim2.new(1, 0, 0, 2)}):Play()
+            
+          task.wait(0.5)
+          UpdateSizeScroll()
         end
-
-        SeedScroll.CanvasSize = UDim2.new(0, 0, 0, yOffset + 10)
-        refreshSeedButtons()
-    end
-
-    populateSeedList()
-    refreshRarityButtons()
-
-    -- ───────────────────────────────────────────
-    -- Logika Tombol & Loop
-    -- ───────────────────────────────────────────
-    local isRunning = false
-    local loopRunning = false
-
-    CloseBtn.MouseButton1Click:Connect(function()
-        loopRunning = false
-        ScreenGui:Destroy()
-    end)
-
-    BuyAllBtn.MouseButton1Click:Connect(function()
-        if isRunning then return end
-        isRunning = true
-        BuyAllBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-        BuyAllBtn.Text = "⏳ Memproses Pembelian..."
-        StatusLabel.Text = "Status: Sedang membeli..."
-        StatusLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
-
-        task.spawn(function()
-            local b, f, t = buyFilteredSeeds()
-            isRunning = false
-            BuyAllBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 90)
-            BuyAllBtn.Text = "🛒 Beli Benih (Sesuai Filter)"
-            StatusLabel.Text = string.format("Status: Selesai (%d/%d sukses) ✅", b, t)
-            StatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-        end)
-    end)
-
-    LoopBtn.MouseButton1Click:Connect(function()
-        CONFIG.LOOP_MODE = not CONFIG.LOOP_MODE
-        loopRunning = CONFIG.LOOP_MODE
-
-        if CONFIG.LOOP_MODE then
-            LoopBtn.Text = "🔄 Loop Mode: ON"
-            LoopBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 90)
-            StatusLabel.Text = "Status: Loop aktif (Filter)"
-            StatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-
-            task.spawn(function()
-                while loopRunning do
-                    if not isRunning then
-                        isRunning = true
-                        BuyAllBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-                        BuyAllBtn.Text = "⏳ Membeli..."
-
-                        buyFilteredSeeds()
-
-                        isRunning = false
-                        BuyAllBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 90)
-                        BuyAllBtn.Text = "🛒 Beli Benih (Sesuai Filter)"
-
-                        if loopRunning then
-                            StatusLabel.Text = "Status: Menunggu " .. CONFIG.LOOP_INTERVAL .. "s..."
-                            task.wait(CONFIG.LOOP_INTERVAL)
-                        end
-                    end
-                    task.wait(0.1)
-                end
-            end)
+      end
+    
+      local function ToggleSection()
+        CircleClick(SectionButton, Player:GetMouse().X, Player:GetMouse().Y)
+        
+        if OpenSection then
+          TweenService:Create(FeatureFrame, TweenInfo.new(0.1), {Rotation = 0}):Play()
+          TweenService:Create(Section, TweenInfo.new(0.1), {Size = UDim2.new(1, 1, 0, 30)}):Play()
+          TweenService:Create(SectionDecideFrame, TweenInfo.new(0.1), {Size = UDim2.new(0, 0, 0, 2)}):Play()
+    
+          OpenSection = false
+          task.wait(0.1)
+          UpdateSizeScroll()
         else
-            LoopBtn.Text = "🔄 Loop Mode: OFF"
-            LoopBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-            StatusLabel.Text = "Status: Loop dimatikan"
-            StatusLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+          OpenSection = true
+          UpdateSizeSection()
         end
-    end)
+      end
+    
+      SectionButton.Activated:Connect(ToggleSection)
+      SectionAdd.ChildAdded:Connect(UpdateSizeSection)
+      SectionAdd.ChildRemoved:Connect(UpdateSizeSection)
+    
+      UpdateSizeScroll()
 
-    -- Parent GUI ke CoreGui (dengan fallback PlayerGui)
-    local success = pcall(function()
-        ScreenGui.Parent = CoreGui
-    end)
-    if not success then
-        ScreenGui.Parent = player:WaitForChild("PlayerGui")
+      local Item, ItemCount = {}, 0
+      function Item:AddParagraph(Config)
+        local Title = Config[1] or Config.Title or ""
+        local Content = Config[2] or Config.Content or ""
+        local SettingFuncs = {}
+
+        local Paragraph = Custom:Create("Frame", {
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 0.935,
+          BorderColor3 = Color3.fromRGB(0, 0, 0),
+          BorderSizePixel = 0,
+          LayoutOrder = ItemCount,
+          Size = UDim2.new(1, 0, 0, 35),
+          Name = "Paragraph",
+        }, SectionAdd)
+      
+        Custom:Create("UICorner", {
+          CornerRadius = UDim.new(0, 4),
+        }, Paragraph)
+
+        local ParagraphTitle = Custom:Create("TextLabel", {
+          Font = Enum.Font.GothamBold,
+          Text = Title,
+          TextColor3 = Color3.fromRGB(231, 231, 231),
+          TextSize = 13,
+          TextXAlignment = Enum.TextXAlignment.Left,
+          TextYAlignment = Enum.TextYAlignment.Top,
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 0.999,
+          BorderSizePixel = 0,
+          Position = UDim2.new(0, 10, 0, 10),
+          Size = UDim2.new(1, -16, 0, 13),
+          Name = "ParagraphTitle",
+        }, Paragraph)
+      
+        local ParagraphContent = Custom:Create("TextLabel", {
+          Font = Enum.Font.GothamBold,
+          Text = Content,
+          TextColor3 = Color3.fromRGB(255, 255, 255),
+          TextSize = 12,
+          TextTransparency = 0.6,
+          TextXAlignment = Enum.TextXAlignment.Left,
+          TextYAlignment = Enum.TextYAlignment.Bottom,
+          BackgroundTransparency = 0.999,
+          BorderSizePixel = 0,
+          Position = UDim2.new(0, 10, 0, 23),
+          Name = "ParagraphContent",
+        }, Paragraph)
+
+        local function UpdateParagraphSize()
+          ParagraphContent.TextWrapped = false
+          local lineCount = math.ceil(ParagraphContent.TextBounds.X / ParagraphContent.AbsoluteSize.X)
+
+          ParagraphContent.Size = UDim2.new(1, -16, 0, 12 + (12 * lineCount))
+          Paragraph.Size = UDim2.new(1, 0, 0, ParagraphContent.AbsoluteSize.Y + 33)
+          ParagraphContent.TextWrapped = true
+
+          UpdateSizeSection()
+        end
+
+        UpdateParagraphSize()
+
+        ParagraphContent:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateParagraphSize)
+
+        function SettingFuncs:Set(Config)
+          local Title = Config[1] or Config.Title or ""
+          local Content = Config[2] or Config.Content or ""
+
+          ParagraphTitle.Text = Title
+          ParagraphContent.Text = Content
+
+          UpdateParagraphSize()
+        end
+
+        return SettingFuncs
+      end
+
+      function Item:AddSeperator(Config)
+        local Title = Config[1] or Config.Title or ""
+        local Sep_Funcs = {}
+
+        local Seperator = Custom:Create("Frame", {
+          BackgroundColor3 = Color3.fromRGB(70, 70, 70),
+          BackgroundTransparency = 0.1,
+          BorderColor3 = Color3.fromRGB(0, 0, 0),
+          BorderSizePixel = 1,
+          LayoutOrder = ItemCount,
+          Size = UDim2.new(1, 0, 0, 30),
+          Name = "Seperator",
+        }, SectionAdd)
+      
+        local SeperatorTitle = Custom:Create("TextLabel", {
+          Font = Enum.Font.GothamBold,
+          Text = Title,
+          TextColor3 = Color3.fromRGB(231, 231, 231),
+          TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+          TextStrokeTransparency = 0.8,
+          TextSize = 14,
+          TextXAlignment = Enum.TextXAlignment.Left,
+          TextYAlignment = Enum.TextYAlignment.Center,
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 1,
+          BorderSizePixel = 0,
+          Position = UDim2.new(0, 12, 0, 0),
+          Size = UDim2.new(1, -16, 1, 0),
+          Name = "SeperatorTitle",
+        }, Seperator)
+        
+        Custom:Create("UICorner", {
+          CornerRadius = UDim.new(0, 6),
+        }, Seperator)
+        
+        local Gradient = Custom:Create("UIGradient", {
+          Color = ColorSequence.new{
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 120, 120)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(120, 120, 120))
+          },
+          Rotation = 90,
+        }, Seperator)
+  
+        function Sep_Funcs:Set(Config)
+          local Title = Config[1] or Config.Title or ""
+
+          SeperatorTitle.Text = Title
+        end
+
+        ItemCount += 1
+        return Sep_Funcs
+      end
+
+      function Item:AddLine()
+        local LineFuncs = {}
+    
+        local Line = Custom:Create("Frame", {
+          BackgroundColor3 = Color3.fromRGB(90, 90, 90),
+          BackgroundTransparency = 0.2,
+          BorderSizePixel = 0,
+          LayoutOrder = ItemCount,
+          Size = UDim2.new(1, 0, 0, 7),
+          Name = "Line",
+        }, SectionAdd)
+    
+        Custom:Create("UICorner", {CornerRadius = UDim.new(0, 3)}, Line)
+    
+        Custom:Create("UIGradient", {
+          Color = ColorSequence.new{
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 80, 80)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 80, 80))
+          },
+          Rotation = 0,
+        }, Line)
+    
+        ItemCount += 1
+        return LineFuncs
+     end
+
+      function Item:AddButton(Config)
+        local Title = Config[1] or Config.Title or ""
+        local Content = Config[2] or Config.Content or ""
+        local Icon = Config[3] or Config.Icon or "rbxassetid://7734010488"
+        local Callback = Config[4] or Config.Callback or function() end
+        local Funcs_Button = {}
+
+        local Button = Custom:Create("Frame", {
+					Name = "Button",
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BackgroundTransparency = 0.935,
+					BorderSizePixel = 0,
+					LayoutOrder = ItemCount,
+					Size = UDim2.new(1, 0, 0, 35)
+				}, SectionAdd)
+
+        Custom:Create("UICorner", {
+          CornerRadius = UDim.new(0, 4)
+        }, Button)
+
+        Custom:Create("TextLabel", {
+					Name = "ButtonTitle",
+					Font = Enum.Font.GothamBold,
+					Text = Title,
+					TextColor3 = Color3.fromRGB(231, 231, 231),
+					TextSize = 13,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextYAlignment = Enum.TextYAlignment.Top,
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BackgroundTransparency = 0.999,
+					BorderSizePixel = 0,
+					Position = UDim2.new(0, 10, 0, 10),
+					Size = UDim2.new(1, -100, 0, 13)
+				}, Button)
+
+        local ButtonContent = Custom:Create("TextLabel", {
+					Name = "ButtonContent",
+					Font = Enum.Font.GothamBold,
+					Text = Content,
+					TextColor3 = Color3.fromRGB(255, 255, 255),
+					TextSize = 12,
+					TextTransparency = 0.6,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextYAlignment = Enum.TextYAlignment.Bottom,
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BackgroundTransparency = 0.999,
+					BorderSizePixel = 0,
+					Position = UDim2.new(0, 10, 0, 23),
+					Size = UDim2.new(1, -100, 0, 12)
+				}, Button)
+
+        local function UpdateButtonSize()
+          local _Height = 12 + (12 * (ButtonContent.TextBounds.X // ButtonContent.AbsoluteSize.X))
+          ButtonContent.Size = UDim2.new(1, -100, 0, _Height)
+          
+          Button.Size = UDim2.new(1, 0, 0, ButtonContent.AbsoluteSize.Y + 33)
+        end
+      
+        ButtonContent.TextWrapped = true
+        UpdateButtonSize()
+      
+        ButtonContent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+          ButtonContent.TextWrapped = false
+          UpdateButtonSize()
+          ButtonContent.TextWrapped = true
+          UpdateSizeSection()
+        end)
+
+        local ButtonButton = Custom:Create("TextButton", {
+					Name = "ButtonButton",
+					Font = Enum.Font.SourceSans,
+					Text = "",
+					TextColor3 = Color3.fromRGB(0, 0, 0),
+					TextSize = 14,
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 0.999,
+					BorderSizePixel = 0,
+					Size = UDim2.new(1, 0, 1, 0)
+				}, Button)
+
+        local FeatureFrame1 = Custom:Create("Frame", {
+					Name = "FeatureFrame",
+					AnchorPoint = Vector2.new(1, 0.5),
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 0.999,
+					BorderSizePixel = 0,
+					Position = UDim2.new(1, -15, 0.5, 0),
+					Size = UDim2.new(0, 25, 0, 25)
+				}, Button)
+
+        Custom:Create("ImageLabel", {
+          Name = "FeatureImg",
+          Image = Icon,
+          AnchorPoint = Vector2.new(0.5, 0.5),
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 0.999,
+          BorderSizePixel = 0,
+          Position = UDim2.new(0.5, 0, 0.5, 0),
+          Size = UDim2.new(1, 0, 1, 0)
+        }, FeatureFrame1)
+
+        ButtonButton.Activated:Connect(function()
+					CircleClick(ButtonButton, Player:GetMouse().X, Player:GetMouse().Y)
+
+					Callback()
+				end)
+
+        ItemCount += 1
+				return Funcs_Button
+      end
+
+      function Item:AddToggle(Config)
+        local Title = Config[1] or Config.Title or ""
+        local Content = Config[2] or Config.Content or ""
+        local Default = Config[3] or Config.Default or false
+        local Callback = Config[4] or Config.Callback or function() end
+
+				local Funcs_Toggle = {Value = Default}
+
+        local Toggle = Custom:Create("Frame", {
+					Name = "Toggle",
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BackgroundTransparency = 0.935,
+					BorderSizePixel = 0,
+					LayoutOrder = ItemCount,
+					Size = UDim2.new(1, 0, 0, 35)
+				}, SectionAdd)
+
+        Custom:Create("UICorner", {
+          CornerRadius = UDim.new(0, 4)
+        }, Toggle)
+
+        local ToggleTitle = Custom:Create("TextLabel", {
+					Name = "ToggleTitle",
+					Font = Enum.Font.GothamBold,
+					Text = Title,
+					TextSize = 13,
+					TextColor3 = Color3.fromRGB(231, 231, 231),
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextYAlignment = Enum.TextYAlignment.Top,
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BackgroundTransparency = 0.999,
+					BorderSizePixel = 0,
+					Position = UDim2.new(0, 10, 0, 10),
+					Size = UDim2.new(1, -100, 0, 13)
+				}, Toggle)
+
+        local ToggleContent = Custom:Create("TextLabel", {
+					Name = "ToggleContent",
+					Font = Enum.Font.GothamBold,
+					Text = Content,
+					TextSize = 12,
+					TextColor3 = Color3.fromRGB(255, 255, 255),
+					TextTransparency = 0.6,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextYAlignment = Enum.TextYAlignment.Bottom,
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BackgroundTransparency = 0.999,
+					BorderSizePixel = 0,
+					Position = UDim2.new(0, 10, 0, 23),
+					Size = UDim2.new(1, -100, 0, 12)
+				}, Toggle)
+				
+        local function UpdateToggleSize()
+          ToggleContent.TextWrapped = false
+          local Ratio = ToggleContent.TextBounds.X / ToggleContent.AbsoluteSize.X
+
+          ToggleContent.Size = UDim2.new(1, -100, 0, 12 + (12 * math.ceil(Ratio)))
+          Toggle.Size = UDim2.new(1, 0, 0, ToggleContent.AbsoluteSize.Y + 33)
+          ToggleContent.TextWrapped = true
+        end
+      
+        UpdateToggleSize()
+      
+        ToggleContent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+          UpdateToggleSize()
+          UpdateSizeSection()
+        end)
+
+        local ToggleButton = Custom:Create("TextButton", {
+          Name = "ToggleButton",
+          Font = Enum.Font.SourceSans,
+          Text = "",
+          TextColor3 = Color3.fromRGB(0, 0, 0),
+          TextSize = 14,
+          BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+          BackgroundTransparency = 0.999,
+          BorderSizePixel = 0,
+          Size = UDim2.new(1, 0, 1, 0)
+        }, Toggle)
+
+        
+				local FeatureFrame2 = Custom:Create("Frame", {
+					Name = "FeatureFrame2",
+					AnchorPoint = Vector2.new(1, 0.5),
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BackgroundTransparency = 0.92,
+					BorderSizePixel = 0,
+					Position = UDim2.new(1, -15, 0.5, 0),
+					Size = UDim2.new(0, 30, 0, 15)
+				}, Toggle)
+
+        Custom:Create("UICorner", {
+          CornerRadius = UDim.new(0, 4)
+        }, FeatureFrame2)
+      
+        local UIStroke8 = Custom:Create("UIStroke", {
+          Color = Color3.fromRGB(255, 255, 255),
+          Thickness = 2,
+          Transparency = 0.9
+        }, FeatureFrame2)
+
+        local ToggleCircle = Custom:Create("Frame", {
+					Name = "ToggleCircle",
+					BackgroundColor3 = Color3.fromRGB(230, 230, 230),
+					BorderSizePixel = 0,
+					Size = UDim2.new(0, 14, 0, 14),
+					Position = UDim2.new(0, 0, 0, 0)
+				}, FeatureFrame2)
+
+        Custom:Create("UICorner", {
+          CornerRadius = UDim.new(0, 15)
+        }, ToggleCircle)
+
+        local function ToggleAnimation(isOn)          
+          local TitleColor = isOn and Custom.ColorRGB or Color3.fromRGB(230, 230, 230)
+          local CirclePosition = isOn and UDim2.new(0, 15, 0, 0) or UDim2.new(0, 0, 0, 0)
+          local StrokeColor = isOn and Custom.ColorRGB or Color3.fromRGB(255, 255, 255)
+          local StrokeTransparency = isOn and 0 or 0.9
+          local FrameColor = isOn and Custom.ColorRGB or Color3.fromRGB(255, 255, 255)
+          local FrameTransparency = isOn and 0 or 0.92
+
+          local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+      
+          TweenService:Create(ToggleTitle, tweenInfo, {TextColor3 = TitleColor}):Play()
+          TweenService:Create(ToggleCircle, tweenInfo, {Position = CirclePosition}):Play()
+          TweenService:Create(UIStroke8, tweenInfo, {Color = StrokeColor, Transparency = StrokeTransparency}):Play()
+          TweenService:Create(FeatureFrame2, tweenInfo, {BackgroundColor3 = FrameColor, BackgroundTransparency = FrameTransparency}):Play()
+        end
+      
+        ToggleButton.Activated:Connect(function()
+          CircleClick(ToggleButton, Player:GetMouse().X, Player:GetMouse().Y)
+          Funcs_Toggle.Value = not Funcs_Toggle.Value
+          Funcs_Toggle:Set(Funcs_Toggle.Value)
+        end)
+      
+        function Funcs_Toggle:Set(Value)
+          Callback(Value)
+          ToggleAnimation(Value)
+        end
+        Funcs_Toggle:Set(Funcs_Toggle.Value)
+
+        ItemCount += 1
+				return Funcs_Toggle
+      end
+
+      function Item:AddSlider(Config)
+        local Title = Config[1] or Config.Title or ""
+        local Content = Config[2] or Config.Content or ""
+        local Increment = Config[3] or Config.Increment or 1
+        local Min = Config[4] or Config.Min or 0
+        local Max = Config[5] or Config.Max or 100
+        local Default = Config[6] or Config.Default or 50
+        local Callback = Config[7] or Config.Callback or function() end
+
+				local Funcs_Slider = {Value = Default}
+        
+        local Slider = Custom:Create("Frame", {
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BackgroundTransparency = 0.9350000023841858,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					LayoutOrder = ItemCount,
+					Size = UDim2.new(1, 0, 0, 35),
+					Name = "Slider",
+				}, SectionAdd)
+
+        Custom:Create("UICorner", {
+          CornerRadius = UDim.new(0, 4),
+        }, Slider)
+
+        Custom:Create("TextLabel", {
+					Font = Enum.Font.GothamBold,
+					Text = Title,
+					TextColor3 = Color3.fromRGB(230, 230, 230),
+					TextSize = 13,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextYAlignment = Enum.TextYAlignment.Top,
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BackgroundTransparency = 0.9990000128746033,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Position = UDim2.new(0, 10, 0, 10),
+					Size = UDim2.new(1, -180, 0, 13),
+					Name = "SliderTitle",
+				}, Slider)
+
+				local SliderContent = Custom:Create("TextLabel", {
+					Font = Enum.Font.GothamBold,
+					Text = Content,
+					TextColor3 = Color3.fromRGB(255, 255, 255),
+					TextSize = 12,
+					TextTransparency = 0.6000000238418579,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextYAlignment = Enum.TextYAlignment.Bottom,
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BackgroundTransparency = 0.9990000128746033,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Position = UDim2.new(0, 10, 0, 23),
+					Size = UDim2.new(1, -180, 0, 12),
+					Name = "SliderContent",
+				}, Slider)
+
+        local function UpdateSliderSize()
+          SliderContent.TextWrapped = false
+          SliderContent.Size = UDim2.new(1, -180, 0, 12 + (12 * math.floor(SliderContent.TextBounds.X / SliderContent.AbsoluteSize.X)))
+          Slider.Size = UDim2.new(1, 0, 0, SliderContent.AbsoluteSize.Y + 33)
+          SliderContent.TextWrapped = true
+        end
+
+        SliderContent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+          UpdateSliderSize()
+          UpdateSizeSection()
+        end)
+        UpdateSliderSize()
+
+        local SliderInput = Custom:Create("Frame", {
+					AnchorPoint = Vector2.new(0, 0.5),
+					BackgroundColor3 = Custom.ColorRGB,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Position = UDim2.new(1, -155, 0.5, 0),
+					Size = UDim2.new(0, 28, 0, 20),
+					Name = "SliderInput",
+				}, Slider)
+
+        Custom:Create("UICorner", {
+          CornerRadius = UDim.new(0, 2),
+        }, SliderInput)
+
+         
+				local TextBox = Custom:Create("TextBox", {
+					Font = Enum.Font.GothamBold,
+					Text = "90",
+					TextColor3 = Color3.fromRGB(255, 255, 255),
+					TextSize = 13,
+					TextWrapped = true,
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 0.9990000128746033,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Position = UDim2.new(0, -1, 0, 0),
+					Size = UDim2.new(1, 0, 1, 0),
+				}, SliderInput)
+
+        local SliderFrame = Custom:Create("Frame", {
+					AnchorPoint = Vector2.new(1, 0.5),
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BackgroundTransparency = 0.800000011920929,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Position = UDim2.new(1, -20, 0.5, 0),
+					Size = UDim2.new(0, 100, 0, 3),
+					Name = "SliderFrame",
+				}, Slider)
+
+        Custom:Create("UICorner", {}, SliderFrame)
+
+        local SliderDraggable = Custom:Create("Frame", {
+					AnchorPoint = Vector2.new(0, 0.5),
+					BackgroundColor3 = Custom.ColorRGB,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Position = UDim2.new(0, 0, 0.5, 0),
+					Size = UDim2.new(0.899999976, 0, 0, 1),
+					Name = "SliderDraggable",
+				}, SliderFrame)
+
+        Custom:Create("UICorner", {}, SliderDraggable)
+
+        local SliderCircle = Custom:Create("Frame", {
+					AnchorPoint = Vector2.new(1, 0.5),
+					BackgroundColor3 = Custom.ColorRGB,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Position = UDim2.new(1, 4, 0.5, 0),
+					Size = UDim2.new(0, 8, 0, 8),
+					Name = "SliderCircle",
+				}, SliderDraggable)
+
+        Custom:Create("UICorner", {}, SliderCircle)
+
+        Custom:Create("UIStroke", {
+          Color = Custom.ColorRGB,
+        }, SliderCircle)
+
+        local Dragging = false
+
+        local function Round(Number, Factor)
+          local Result = math.floor(Number / Factor + (math.sign(Number) * 0.5)) * Factor
+          if Result < 0 then 
+            Result = Result + Factor 
+          end
+          return Result
+        end
+        
+        function Funcs_Slider:Set(Value)
+          Value = math.clamp(Round(Value, Increment), Min, Max)
+          Funcs_Slider.Value = Value
+          TextBox.Text = tostring(Value)
+            
+          TweenService:Create(SliderDraggable, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromScale((Value - Min) / (Max - Min), 1) }):Play()
+        end
+        
+        SliderFrame.InputBegan:Connect(function(Input)
+          if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+            Dragging = true
+          end
+        end)
+      
+        SliderFrame.InputEnded:Connect(function(Input)
+          if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+            Dragging = false
+            Callback(Funcs_Slider.Value)
+          end
+        end)
+      
+        local _LastX = nil
+        UserInputService.InputChanged:Connect(function(Input)
+          if Dragging then
+            local CurrPosX = Input.Position.X
+            if CurrPosX ~= _LastX then
+              _LastX = CurrPosX
+      
+              local SizeScale = math.clamp((CurrPosX - SliderFrame.AbsolutePosition.X) / SliderFrame.AbsoluteSize.X, 0, 1)
+              Funcs_Slider:Set(Min + ((Max - Min) * SizeScale))
+            end
+          end
+        end)
+        
+        TextBox:GetPropertyChangedSignal("Text"):Connect(function()
+          local Valid = TextBox.Text:gsub("[^%d]", "")
+          if Valid ~= "" then
+            local ValidNumber = math.min(tonumber(Valid), Max)
+            TextBox.Text = tostring(ValidNumber)
+          else
+            TextBox.Text = "0"
+          end
+        end)
+        
+        TextBox.FocusLost:Connect(function()
+          if TextBox.Text ~= "" then
+            Funcs_Slider:Set(tonumber(TextBox.Text))
+            Callback(Funcs_Slider.Value)
+          else
+            Funcs_Slider:Set(0)
+            Callback(Funcs_Slider.Value)
+          end
+        end)
+        
+        Funcs_Slider:Set(tonumber(Default))
+        Callback(Funcs_Slider.Value)
+
+        ItemCount += 1
+				return Funcs_Slider
+      end
+
+      function Item:AddInput(Config)
+        local Title = Config[1] or Config.Title or ""
+        local Content = Config[2] or Config.Content or ""
+        local Default = Config[3] or Config.Default or ""
+        local Callback = Config[4] or Config.Callback or function() end
+				local Funcs_Input = {Value = Default}
+
+        local Input = Custom:Create("Frame", {
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 0.935,
+          BorderColor3 = Color3.fromRGB(0, 0, 0),
+          BorderSizePixel = 0,
+          LayoutOrder = ItemCount,
+          Size = UDim2.new(1, 0, 0, 35),
+          Name = "Input",
+        }, SectionAdd)
+
+        Custom:Create("UICorner", {
+          CornerRadius = UDim.new(0, 4),
+        }, Input)
+
+        local InputTitle = Custom:Create("TextLabel", {
+          Font = Enum.Font.GothamBold,
+          Text = Title,
+          TextColor3 = Color3.fromRGB(230, 230, 230),
+          TextSize = 13,
+          TextXAlignment = Enum.TextXAlignment.Left,
+          TextYAlignment = Enum.TextYAlignment.Top,
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 0.999,
+          BorderColor3 = Color3.fromRGB(0, 0, 0),
+          BorderSizePixel = 0,
+          Position = UDim2.new(0, 10, 0, 10),
+          Size = UDim2.new(1, -180, 0, 13),
+          Name = "InputTitle",
+        }, Input)
+
+        local InputContent = Custom:Create("TextLabel", {
+          Font = Enum.Font.GothamBold,
+          Text = Content,
+          TextColor3 = Color3.fromRGB(255, 255, 255),
+          TextSize = 12,
+          TextTransparency = 0.6,
+          TextWrapped = true,
+          TextXAlignment = Enum.TextXAlignment.Left,
+          TextYAlignment = Enum.TextYAlignment.Bottom,
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 0.999,
+          BorderColor3 = Color3.fromRGB(0, 0, 0),
+          BorderSizePixel = 0,
+          Position = UDim2.new(0, 10, 0, 23),
+          Size = UDim2.new(1, -180, 0, 12),
+          Name = "InputContent",
+          Parent = Input
+        })
+
+        local function UpdateInputSize()
+          local Ratio = InputContent.TextBounds.X / InputContent.AbsoluteSize.X
+          local Calculated = 12 + (12 * math.floor(Ratio))
+
+          InputContent.Size = UDim2.new(1, -180, 0, Calculated)
+          Input.Size = UDim2.new(1, 0, 0, InputContent.AbsoluteSize.Y + 33)
+        end
+      
+        UpdateInputSize()
+      
+        InputContent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+          InputContent.TextWrapped = false
+          UpdateInputSize()
+          InputContent.TextWrapped = true
+          UpdateSizeSection()
+        end)
+
+        local InputFrame = Custom:Create("Frame", {
+          AnchorPoint = Vector2.new(1, 0.5),
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 0.95,
+          BorderColor3 = Color3.fromRGB(0, 0, 0),
+          BorderSizePixel = 0,
+          ClipsDescendants = true,
+          Position = UDim2.new(1, -7, 0.5, 0),
+          Size = UDim2.new(0, 148, 0, 30),
+          Name = "InputFrame"
+        }, Input)
+    
+
+        Custom:Create("UICorner", {
+          CornerRadius = UDim.new(0, 4)
+        }, InputFrame)
+
+        local InputTextBox = Custom:Create("TextBox", {
+          CursorPosition = -1,
+          Font = Enum.Font.GothamBold,
+          PlaceholderColor3 = Color3.fromRGB(120, 120, 120),
+          PlaceholderText = "Write your input there",
+          Text = "",
+          TextColor3 = Color3.fromRGB(255, 255, 255),
+          TextSize = 12,
+          TextXAlignment = Enum.TextXAlignment.Left,
+          AnchorPoint = Vector2.new(0, 0.5),
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 0.999,
+          BorderColor3 = Color3.fromRGB(0, 0, 0),
+          BorderSizePixel = 0,
+          Position = UDim2.new(0, 5, 0.5, 0),
+          Size = UDim2.new(1, -10, 1, -8),
+          Name = "InputTextBox"
+        }, InputFrame)
+
+        function Funcs_Input:Set(Value)
+					InputTextBox.Text = Value
+					Funcs_Input.Value = Value
+					Callback(Value)
+				end
+
+				InputTextBox.FocusLost:Connect(function()
+					Funcs_Input:Set(InputTextBox.Text)
+				end)
+
+				Funcs_Input:Set(Default)
+
+        ItemCount += 1
+				return Funcs_Input
+      end
+
+      function Item:AddDropdown(Config)
+        local Title = Config[1] or Config.Title or ""
+        local Content = Config[2] or Config.Content or ""
+        local Multi = Config[3] or Config.Multi or false
+        local Options = Config[4] or Config.Options or {}
+        local Default = Config[5] or Config.Default or {}
+        local Callback = Config[6] or Config.Callback or function() end
+
+        local Funcs_Dropdown = {Value = Default, Options = Options}
+
+        local Dropdown = Custom:Create("Frame", {
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 0.935,
+          BorderColor3 = Color3.fromRGB(0, 0, 0),
+          BorderSizePixel = 0,
+          LayoutOrder = ItemCount,
+          Size = UDim2.new(1, 0, 0, 35),
+          Name = "Dropdown"
+        }, SectionAdd)
+
+        local DropdownButton = Custom:Create("TextButton", {
+          Font = Enum.Font.SourceSans,
+          Text = "",
+          TextColor3 = Color3.fromRGB(0, 0, 0),
+          TextSize = 14,
+          BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+          BackgroundTransparency = 0.999,
+          BorderColor3 = Color3.fromRGB(0, 0, 0),
+          BorderSizePixel = 0,
+          Size = UDim2.new(1, 0, 1, 0),
+          Name = "ToggleButton"
+        }, Dropdown)
+
+        Custom:Create("UICorner", {
+          CornerRadius = UDim.new(0, 4)
+        }, Dropdown)
+
+        local DropdownTitle = Custom:Create("TextLabel", {
+          Font = Enum.Font.GothamBold,
+          Text = Title,
+          TextColor3 = Color3.fromRGB(230, 230, 230),
+          TextSize = 13,
+          TextXAlignment = Enum.TextXAlignment.Left,
+          TextYAlignment = Enum.TextYAlignment.Top,
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 0.999,
+          BorderColor3 = Color3.fromRGB(0, 0, 0),
+          BorderSizePixel = 0,
+          Position = UDim2.new(0, 10, 0, 10),
+          Size = UDim2.new(1, -180, 0, 13),
+          Name = "DropdownTitle",
+          Parent = Dropdown
+        })
+
+        local DropdownContent = Custom:Create("TextLabel", {
+          Font = Enum.Font.GothamBold,
+          Text = Content,
+          TextColor3 = Color3.fromRGB(255, 255, 255),
+          TextSize = 12,
+          TextTransparency = 0.6,
+          TextWrapped = true,
+          TextXAlignment = Enum.TextXAlignment.Left,
+          TextYAlignment = Enum.TextYAlignment.Bottom,
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 0.999,
+          BorderColor3 = Color3.fromRGB(0, 0, 0),
+          BorderSizePixel = 0,
+          Position = UDim2.new(0, 10, 0, 23),
+          Size = UDim2.new(1, -180, 0, 12),
+          Name = "DropdownContent",
+          Parent = Dropdown
+        })
+        
+				DropdownContent.Size = UDim2.new(1, -180, 0, 12 + (12 * (DropdownContent.TextBounds.X // DropdownContent.AbsoluteSize.X)))
+				DropdownContent.TextWrapped = true
+				Dropdown.Size = UDim2.new(1, 0, 0, DropdownContent.AbsoluteSize.Y + 33)
+        
+        DropdownContent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+          DropdownContent.TextWrapped = false
+            
+					DropdownContent.Size = UDim2.new(1, -180, 0, 12 + (12 * (DropdownContent.TextBounds.X // DropdownContent.AbsoluteSize.X)))
+					Dropdown.Size = UDim2.new(1, 0, 0, DropdownContent.AbsoluteSize.Y + 33)
+            
+          DropdownContent.TextWrapped = true
+
+          UpdateSizeSection()
+        end)
+
+        local SelectOptionsFrame = Custom:Create("Frame", {
+          AnchorPoint = Vector2.new(1, 0.5),
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 0.95,
+          BorderColor3 = Color3.fromRGB(0, 0, 0),
+          BorderSizePixel = 0,
+          Position = UDim2.new(1, -7, 0.5, 0),
+          Size = UDim2.new(0, 148, 0, 30),
+          Name = "SelectOptionsFrame",
+          LayoutOrder = CountDropdown
+        }, Dropdown)
+
+        Custom:Create("UICorner", {
+          CornerRadius = UDim.new(0, 4)
+        }, SelectOptionsFrame)
+
+        DropdownButton.Activated:Connect(function()
+          if not MoreBlur.Visible then
+            MoreBlur.Visible = true
+              
+            local tweenInfo = TweenInfo.new(0.1)
+
+            DropPageLayout:JumpToIndex(SelectOptionsFrame.LayoutOrder)
+                            
+            local BlurTween = TweenService:Create(MoreBlur, tweenInfo, {BackgroundTransparency = 0.7})
+            local DropdownTween = TweenService:Create(DropdownSelect, tweenInfo, {Position = UDim2.new(1, -11, 0.5, 0)})
+              
+            BlurTween:Play()
+            DropdownTween:Play()
+          end
+        end)
+
+        local OptionSelecting = Custom:Create("TextLabel", {
+          Font = Enum.Font.GothamBold,
+          Text = "",
+          TextColor3 = Color3.fromRGB(255, 255, 255),
+          TextSize = 12,
+          TextTransparency = 0.6,
+          TextWrapped = true,
+          TextXAlignment = Enum.TextXAlignment.Left,
+          AnchorPoint = Vector2.new(0, 0.5),
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 0.999,
+          BorderColor3 = Color3.fromRGB(0, 0, 0),
+          BorderSizePixel = 0,
+          Position = UDim2.new(0, 5, 0.5, 0),
+          Size = UDim2.new(1, -30, 1, -8),
+          Name = "OptionSelecting",
+        }, SelectOptionsFrame)
+
+        local OptionImg = Custom:Create("ImageLabel", {
+          Image = "rbxassetid://90200523188815",
+          ImageColor3 = Color3.fromRGB(231, 231, 231),
+          AnchorPoint = Vector2.new(1, 0.5),
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 0.999,
+          BorderColor3 = Color3.fromRGB(0, 0, 0),
+          BorderSizePixel = 0,
+          Position = UDim2.new(1, 0, 0.5, 0),
+          Size = UDim2.new(0, 25, 0, 25),
+          Name = "OptionImg",
+        }, SelectOptionsFrame)
+
+        local ScrollSelect = Custom:Create("ScrollingFrame", {
+          CanvasSize = UDim2.new(0, 0, 0, 0),
+          ScrollBarImageColor3 = Color3.fromRGB(0, 0, 0),
+          ScrollBarThickness = 0,
+          Active = true,
+          LayoutOrder = CountDropdown,
+          BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+          BackgroundTransparency = 0.999,
+          BorderColor3 = Color3.fromRGB(0, 0, 0),
+          BorderSizePixel = 0,
+          Size = UDim2.new(1, 0, 1, 0),
+          Name = "ScrollSelect",
+        }, DropdownFolder)
+
+        Custom:Create("UIListLayout", {
+          Padding = UDim.new(0, 3),
+          SortOrder = Enum.SortOrder.LayoutOrder,
+        }, ScrollSelect)
+
+        local SearchBar = Custom:Create("TextBox", {
+          Font = Enum.Font.GothamBold,
+          PlaceholderText = "Search",
+          PlaceholderColor3 = Color3.fromRGB(120, 120, 120),
+          Text = "",
+          TextColor3 = Color3.fromRGB(255, 255, 255),
+          TextSize = 12,
+          BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+          BackgroundTransparency = 0.9,
+          BorderColor3 = Color3.fromRGB(255, 0, 0),
+          BorderSizePixel = 1,
+          Size = UDim2.new(1, 0, 0, 20),
+          Name = "SearchBar"
+        }, ScrollSelect)
+
+        SearchBar:GetPropertyChangedSignal("Text"):Connect(function()
+          local SearchText = string.lower(SearchBar.Text)
+
+          for _, v in pairs(ScrollSelect:GetChildren()) do
+            if v:IsA("Frame") and v.Name == "Option" and v.Name ~= "SearchBar" then
+              local OptionText = v:FindFirstChild("OptionText")
+              if OptionText then
+                v.Visible = string.find(string.lower(OptionText.Text), SearchText) ~= nil
+              end
+            end
+          end
+        end)
+
+        local DropCount = 0
+
+        function Funcs_Dropdown:Clear()
+          for _, DropFrame in pairs(ScrollSelect:GetChildren()) do
+            if DropFrame.Name == "Option" then
+              Funcs_Dropdown.Value = {}
+              Funcs_Dropdown.Options = {}
+              OptionSelecting.Text = "Select Options"
+              DropFrame:Destroy()
+            end
+          end
+        end
+        
+        function Funcs_Dropdown:Set(Value)
+          Funcs_Dropdown.Value = Value or Funcs_Dropdown.Value
+
+          for _, Drop in pairs(ScrollSelect:GetChildren()) do
+            if Drop.Name ~= "UIListLayout" and Drop.Name ~= "SearchBar" then
+              local isTextFound = table.find(Funcs_Dropdown.Value, Drop.OptionText.Text)
+              local tweenInfoInOut = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+
+              local Size = isTextFound and UDim2.new(0, 1, 0, 12) or UDim2.new(0, 0, 0, 0)
+              local BackgroundTransparency = isTextFound and 0.935 or 0.999
+              local Transparency = isTextFound and 0 or 0.999
+          
+              TweenService:Create(Drop.ChooseFrame, tweenInfoInOut, {Size = Size}):Play()
+              TweenService:Create(Drop.ChooseFrame.UIStroke, tweenInfoInOut, {Transparency = Transparency}):Play()
+              TweenService:Create(Drop, tweenInfoInOut, {BackgroundTransparency = BackgroundTransparency}):Play()
+            end
+          end
+        
+          local DropdownValueTable = table.concat(Funcs_Dropdown.Value, ", ")
+          OptionSelecting.Text = DropdownValueTable ~= "" and DropdownValueTable or "Select Options"
+          Callback(Funcs_Dropdown.Value)
+        end
+
+        function Funcs_Dropdown:AddOption(OptionName)
+          OptionName = OptionName or "Option"
+  
+          local Option = Custom:Create("Frame", {
+            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundTransparency = 0.999,
+            BorderColor3 = Color3.fromRGB(0, 0, 0),
+            BorderSizePixel = 0,
+            LayoutOrder = DropCount,
+            Size = UDim2.new(1, 0, 0, 30),
+            Name = "Option"
+          }, ScrollSelect)
+  
+          Custom:Create("UICorner", {
+            CornerRadius = UDim.new(0, 3)
+          }, Option)
+  
+          local OptionButton = Custom:Create("TextButton", {
+            Font = Enum.Font.GothamBold,
+            Text = "",
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            TextSize = 13,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundTransparency = 0.999,
+            BorderColor3 = Color3.fromRGB(0, 0, 0),
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 1, 0),
+            Name = "OptionButton"
+          }, Option)
+  
+          Custom:Create("TextLabel", {
+            Font = Enum.Font.GothamBold,
+            Text = OptionName,
+            TextSize = 13,
+            TextColor3 = Color3.fromRGB(230, 230, 230),
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextYAlignment = Enum.TextYAlignment.Top,
+            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundTransparency = 0.999,
+            BorderColor3 = Color3.fromRGB(0, 0, 0),
+            BorderSizePixel = 0,
+            Position = UDim2.new(0, 8, 0, 8),
+            Size = UDim2.new(1, -100, 0, 13),
+            Name = "OptionText"
+          }, Option)
+  
+          local ChooseFrame = Custom:Create("Frame", {
+            AnchorPoint = Vector2.new(0, 0.5),
+            BackgroundColor3 = Custom.ColorRGB,
+            BorderColor3 = Color3.fromRGB(0, 0, 0),
+            BorderSizePixel = 0,
+            Position = UDim2.new(0, 2, 0.5, 0),
+            Size = UDim2.new(0, 0, 0, 0),
+            Name = "ChooseFrame"
+          }, Option)
+  
+          Custom:Create("UIStroke", {
+            Color = Custom.ColorRGB,
+            Thickness = 1.6,
+            Transparency = 0.999
+          }, ChooseFrame)
+  
+          Custom:Create("UICorner", {}, ChooseFrame)
+  
+          OptionButton.Activated:Connect(function()
+
+            CircleClick(OptionButton, Player:GetMouse().X, Player:GetMouse().Y)
+        
+            local isOptionSelected = Option.BackgroundTransparency > 0.95
+
+            if Multi then
+              if isOptionSelected then
+                if not table.find(Funcs_Dropdown.Value, OptionName) then
+                  table.insert(Funcs_Dropdown.Value, OptionName)
+                end
+              else
+                for i, value in ipairs(Funcs_Dropdown.Value) do
+                  if value == OptionName then
+                    table.remove(Funcs_Dropdown.Value, i)
+                    break
+                  end
+                end
+              end
+            else
+              Funcs_Dropdown.Value = {OptionName}
+            end
+
+            Funcs_Dropdown:Set(Funcs_Dropdown.Value)
+          end)
+        
+          local function UpdateCanvasSize()
+            local OffsetY = 0
+
+            for _, child in ipairs(ScrollSelect:GetChildren()) do
+              if child.Name ~= "UIListLayout" and child.Name ~= "SearchBar" then
+                OffsetY = OffsetY + 5 + child.Size.Y.Offset
+              end
+            end
+
+            ScrollSelect.CanvasSize = UDim2.new(0, 0, 0, OffsetY)
+          end
+        
+          UpdateCanvasSize()
+
+          DropCount += 1
+        end
+
+        function Funcs_Dropdown:Refresh(RefreshList, Selecting)
+          RefreshList = RefreshList or {}
+          Selecting = Selecting or {}
+          
+          Funcs_Dropdown:Clear()
+          
+          for _, Drop in ipairs(RefreshList) do
+            Funcs_Dropdown:AddOption(Drop)
+          end
+      
+          Funcs_Dropdown.Options = RefreshList
+          Funcs_Dropdown:Set(Selecting)
+        end
+      
+        Funcs_Dropdown:Refresh(Funcs_Dropdown.Options, Funcs_Dropdown.Value)
+      
+        ItemCount += 1
+        CountDropdown += 1
+        return Funcs_Dropdown
+      end
+
+      ItemCount += 1
+      return Item
     end
 
-    return ScreenGui
+    CountTab += 1
+    return Sections
+  end
+
+  return Tabs
 end
 
--- ═══════════════════════════════════════════════
--- Inisialisasi
--- ═══════════════════════════════════════════════
-log("Script dimuat dengan fitur Filter Rarity & Nama!")
-notify("🌱 Auto Buy Seeds", "Script dimuat!\nGunakan tab [Rarity] / [Benih] untuk memfilter.", 5)
-createGUI()
+return Speed_Library
+end)()
+
+
+-- ====================================================================
+-- PEMANGGIL RESMI: Menampilkan seluruh komponen bawaan Speed Hub X 5.0.0
+-- (Kode pustaka asli di atas 100% utuh tanpa dirubah)
+-- ====================================================================
+
+local Window = Speed_Library:CreateWindow({
+  Title = "Speed Hub X",
+  Description = "Version 5.0.0 (Original UI)",
+  ["Tab Width"] = 135,
+  SizeUi = UDim2.fromOffset(560, 330)
+})
+
+-- ----------------------------------------------------
+-- TAB 1: Komponen Dasar (Button, Toggle, Slider, Input)
+-- ----------------------------------------------------
+local Tab1 = Window:CreateTab({ Name = "Komponen 1" })
+local Sec1 = Tab1:AddSection("Kontrol Interaktif", true)
+
+Sec1:AddParagraph({
+  Title = "Tentang UI ini",
+  Content = "Ini adalah tampilan murni dari Speed Hub X 5.0.0 tanpa modifikasi."
+})
+
+Sec1:AddSeperator({ Title = "Tombol & Saklar" })
+
+Sec1:AddButton({
+  Title = "Contoh Tombol Aksi",
+  Content = "Klik untuk melihat efek riak sentuhan",
+  Callback = function()
+    Speed_Library:SetNotification({
+      Title = "Speed Hub X",
+      Description = "Klik Sukses",
+      Content = "Tombol berhasil ditekan!",
+      Delay = 3
+    })
+  end
+})
+
+Sec1:AddToggle({
+  Title = "Contoh Saklar (Toggle)",
+  Content = "Aktifkan atau matikan fitur ini",
+  Default = true,
+  Callback = function(val)
+    Speed_Library:SetNotification({
+      Title = "Toggle",
+      Description = val and "ON" or "OFF",
+      Content = "Status toggle berubah: " .. tostring(val),
+      Delay = 2
+    })
+  end
+})
+
+Sec1:AddSlider({
+  Title = "Contoh Slider",
+  Content = "Geser untuk mengubah nilai (1 - 100)",
+  Min = 1,
+  Max = 100,
+  Default = 50,
+  Increment = 1,
+  Callback = function(val)
+    print("Nilai Slider:", val)
+  end
+})
+
+Sec1:AddInput({
+  Title = "Contoh Input Teks",
+  Content = "Ketik teks apapun di sini",
+  Default = "Halo Roblox",
+  Callback = function(teks)
+    print("Input diketik:", teks)
+  end
+})
+
+-- ----------------------------------------------------
+-- TAB 2: Komponen Dropdown (Menu Pilihan)
+-- ----------------------------------------------------
+local Tab2 = Window:CreateTab({ Name = "Dropdown Tab" })
+local Sec2 = Tab2:AddSection("Menu Pilihan", true)
+
+Sec2:AddDropdown({
+  Title = "Pilih Benih (Single Select)",
+  Content = "Pilih salah satu benih",
+  Multi = false,
+  Options = {"Carrot Seed", "Tomato Seed", "Potato Seed", "Watermelon Seed", "Pumpkin Seed"},
+  Default = {"Carrot Seed"},
+  Callback = function(pilihan)
+    print("Dipilih:", pilihan)
+  end
+})
+
+Sec2:AddDropdown({
+  Title = "Pilih Rarity (Multi Select)",
+  Content = "Bisa memilih lebih dari satu kelangkaan",
+  Multi = true,
+  Options = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"},
+  Default = {"Common", "Rare"},
+  Callback = function(daftarPilihan)
+    print("Daftar Rarity aktif:", table.concat(daftarPilihan, ", "))
+  end
+})
+
+-- Notifikasi pembuka
+Speed_Library:SetNotification({
+  Title = "Speed Hub X",
+  Description = "5.0.0",
+  Content = "UI Asli berhasil dimuat! Silakan coba semua fiturnya.",
+  Delay = 5
+})

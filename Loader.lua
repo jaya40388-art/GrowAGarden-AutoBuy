@@ -8,7 +8,7 @@ local HttpGet = game.HttpGet
 local BASE_URL = "https://raw.githubusercontent.com/jaya40388-art/GrowAGarden-AutoBuy/refs/heads/main/"
 
 -- Load script utama
-local mainScript = HttpGet(game, BASE_URL .. "Main.lua")
+local mainScript = HttpGet(game, BASE_URL .. "SpeedHub_Test.lua")
 
 if mainScript then
     loadstring(mainScript)()

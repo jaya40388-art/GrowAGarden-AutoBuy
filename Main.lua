@@ -386,13 +386,15 @@ function JayaLib:CreateWindow(config)
     -- ═══════════════════════════════════════════════════════════
     -- Floating Icon for Mobile / Minimize Restore (Using JSC Logo)
     -- ═══════════════════════════════════════════════════════════
-    local FloatIcon = CreateInstance("TextButton", {
+    local FloatIcon = CreateInstance("ImageButton", {
         Name = "Jaya_FloatIcon",
         BackgroundColor3 = JayaLib.BgDark,
         BorderSizePixel = 0,
         Position = UDim2.new(0.04, 0, 0.12, 0),
-        Size = UDim2.new(0, 50, 0, 50),
-        Text = "",
+        Size = UDim2.new(0, 52, 0, 52),
+        Image = logoAsset or "",
+        ScaleType = Enum.ScaleType.Fit,
+        AutoButtonColor = false,
         Visible = false,
         Parent = ScreenGui
     })
@@ -400,16 +402,7 @@ function JayaLib:CreateWindow(config)
     CreateInstance("UIStroke", { Color = JayaLib.AccentColor, Thickness = 2.2 }, FloatIcon)
     MakeDraggable(FloatIcon, FloatIcon)
 
-    if logoAsset then
-        local floatImg = CreateInstance("ImageLabel", {
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, -6, 1, -6),
-            Position = UDim2.new(0, 3, 0, 3),
-            Image = logoAsset,
-            Parent = FloatIcon
-        })
-        CreateInstance("UICorner", { CornerRadius = UDim.new(1, 0) }, floatImg)
-    else
+    if not logoAsset then
         local floatFallback = CreateInstance("TextLabel", {
             BackgroundTransparency = 1,
             Size = UDim2.new(1, 0, 1, 0),

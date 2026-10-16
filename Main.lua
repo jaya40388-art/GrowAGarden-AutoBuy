@@ -1,4 +1,12 @@
-﻿local Speed_Library = (function()
+-- Compatibility Polyfill for Delta / Roblox Executors
+local gethui = (typeof(gethui) == "function" and gethui) or function()
+    return (game:GetService("CoreGui"):FindFirstChild("RobloxGui") or game:GetService("CoreGui"))
+end
+local cloneref = (typeof(cloneref) == "function" and cloneref) or function(instance)
+    return instance
+end
+
+local Speed_Library = (function()
 local Players = game:GetService("Players")
 local Player = Players.LocalPlayer
 local RunService = game:GetService("RunService")
@@ -394,7 +402,7 @@ function Speed_Library:CreateWindow(Config)
     Size = UDim2.new(0, 455, 0, 350),
     ZIndex = 0,
     Name = "DropShadowHolder",
-    Position = UDim2.new(0, (SpeedHubXGui.AbsoluteSize.X // 2 - 455 // 2), 0, (SpeedHubXGui.AbsoluteSize.Y // 2 - 350 // 2))
+    Position = UDim2.new(0.5, -227, 0.5, -175)
   }, SpeedHubXGui)
 
   local DropShadow = Custom:Create("ImageLabel", {
@@ -2216,32 +2224,29 @@ end)()
 
 -- ====================================================================
 -- PEMANGGIL RESMI: Menampilkan seluruh komponen bawaan Speed Hub X 5.0.0
--- (Kode pustaka asli di atas 100% utuh tanpa dirubah)
 -- ====================================================================
 
 local Window = Speed_Library:CreateWindow({
   Title = "Speed Hub X",
-  Description = "Version 5.0.0 (Original UI)",
+  Description = "Version 5.0.0",
   ["Tab Width"] = 135,
   SizeUi = UDim2.fromOffset(560, 330)
 })
 
--- ----------------------------------------------------
 -- TAB 1: Komponen Dasar (Button, Toggle, Slider, Input)
--- ----------------------------------------------------
 local Tab1 = Window:CreateTab({ Name = "Komponen 1" })
 local Sec1 = Tab1:AddSection("Kontrol Interaktif", true)
 
 Sec1:AddParagraph({
-  Title = "Tentang UI ini",
-  Content = "Ini adalah tampilan murni dari Speed Hub X 5.0.0 tanpa modifikasi."
+  Title = "Speed Hub X 5.0.0",
+  Content = "Ini adalah tampilan murni dari source code Speed Hub X 5.0.0."
 })
 
-Sec1:AddSeperator({ Title = "Tombol & Saklar" })
+Sec1:AddSeperator({ Title = "Tombol dan Saklar" })
 
 Sec1:AddButton({
   Title = "Contoh Tombol Aksi",
-  Content = "Klik untuk melihat efek riak sentuhan",
+  Content = "Klik untuk memunculkan notifikasi",
   Callback = function()
     Speed_Library:SetNotification({
       Title = "Speed Hub X",
@@ -2267,8 +2272,8 @@ Sec1:AddToggle({
 })
 
 Sec1:AddSlider({
-  Title = "Contoh Slider",
-  Content = "Geser untuk mengubah nilai (1 - 100)",
+  Title = "Contoh Slider Kecepatan",
+  Content = "Geser nilai (1 - 100)",
   Min = 1,
   Max = 100,
   Default = 50,
@@ -2283,13 +2288,11 @@ Sec1:AddInput({
   Content = "Ketik teks apapun di sini",
   Default = "Halo Roblox",
   Callback = function(teks)
-    print("Input diketik:", teks)
+    print("Input teks:", teks)
   end
 })
 
--- ----------------------------------------------------
 -- TAB 2: Komponen Dropdown (Menu Pilihan)
--- ----------------------------------------------------
 local Tab2 = Window:CreateTab({ Name = "Dropdown Tab" })
 local Sec2 = Tab2:AddSection("Menu Pilihan", true)
 
@@ -2315,7 +2318,7 @@ Sec2:AddDropdown({
   end
 })
 
--- Notifikasi pembuka
+-- Notifikasi sambutan
 Speed_Library:SetNotification({
   Title = "Speed Hub X",
   Description = "5.0.0",

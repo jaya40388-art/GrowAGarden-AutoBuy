@@ -290,21 +290,88 @@ local function FindRemotes()
     return remotes
 end
 
-local function FindAvailableSeeds()
-    local seeds, set = {}, {}
-    -- Urutan utama sesuai tabel resmi (Tier Common s/d Transcendent)
-    for _, s in ipairs(DEFAULT_SEEDS) do
-        if not set[s] then
-            set[s] = true
-            table.insert(seeds, s)
+-- ═══════════════════════════════════════════════════════════════
+-- SHOP SEED: HELPER (REMOTE ASLI, BACA STOK DARI UI TOKO, KATALOG)
+-- ═══════════════════════════════════════════════════════════════
+local DEBUG = true            -- true = tampilkan log di console executor (F9)
+local UNIT_DELAY = 0.25       -- jeda tiap 1x pembelian (detik)
+
+local function Log(...)
+    if DEBUG then print("[JAYA SC][Seed]", ...) end
+end
+
+-- "Carrot Seed" -> "Carrot" (nama yang dipakai remote & UI toko)
+local function ToSeedKey(displayName)
+    return (displayName:gsub("%s*Seed$", ""))
+end
+
+local cachedSeedRemote = nil
+local function GetSeedRemote()
+    if cachedSeedRemote and cachedSeedRemote.Parent then
+        return cachedSeedRemote
+    end
+    cachedSeedRemote = nil
+
+    local ge = ReplicatedStorage:FindFirstChild("GameEvents")
+    local remote = ge and ge:FindFirstChild("BuySeedStock")
+    if remote and remote:IsA("RemoteEvent") then
+        cachedSeedRemote = remote
+        return remote
+    end
+    -- cadangan: cari di seluruh ReplicatedStorage
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj.Name == "BuySeedStock" and obj:IsA("RemoteEvent") then
+            cachedSeedRemote = obj
+            return obj
         end
     end
-    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-        if obj.Name:lower():find("seed") or obj.Name:lower():find("benih") then
-            if not set[obj.Name] then
-                set[obj.Name] = true
-                table.insert(seeds, obj.Name)
+    return nil
+end
+
+-- Membaca UI toko: hasilnya { [namaBenih] = TextLabel Stock_Text }
+local function ReadSeedLabels()
+    local pg = Player:FindFirstChild("PlayerGui")
+    local shop = pg and pg:FindFirstChild("Seed_Shop")
+    if not shop then return nil end
+
+    local labels, n = {}, 0
+    for _, d in ipairs(shop:GetDescendants()) do
+        if d.Name == "Stock_Text" and (d:IsA("TextLabel") or d:IsA("TextButton")) then
+            local item = d.Parent and d.Parent.Parent -- Stock_Text -> Main_Frame -> [Nama Benih]
+            if item then
+                labels[item.Name] = d
+                n = n + 1
             end
+        end
+    end
+    if n == 0 then return nil end
+    return labels
+end
+
+-- "X5 Stock" -> 5 | "No Stock" -> 0
+local function LabelCount(label)
+    if not label or not label.Parent then return nil end
+    local txt = label.ContentText
+    if txt == nil or txt == "" then txt = label.Text end
+    return tonumber(string.match(txt, "%d+")) or 0
+end
+
+-- Katalog dropdown: 32 benih bawaan + benih lain yang ditemukan di toko asli
+local function FindAvailableSeeds()
+    local seeds, set = {}, {}
+    for _, s in ipairs(DEFAULT_SEEDS) do
+        set[ToSeedKey(s)] = true
+        table.insert(seeds, s)
+    end
+    local labels = ReadSeedLabels()
+    if labels then
+        local extra = {}
+        for key in pairs(labels) do
+            if not set[key] then table.insert(extra, key) end
+        end
+        table.sort(extra)
+        for _, key in ipairs(extra) do
+            table.insert(seeds, key .. " Seed")
         end
     end
     return seeds
@@ -1422,48 +1489,90 @@ CreateInstance("TextLabel", {
 SecSeed = TabShop:AddSection("🌱 Menu Shop Seed (Benih)", true)
 
 local isBuyingSeeds = false
+local seedWarned = false
+local seedLoopGen = 0
+
+-- Beli 1 jenis benih sampai stoknya habis (atau sheckles tidak cukup)
+local function BuySeedUntilEmpty(remote, key, label)
+    local bought, fails = 0, 0
+    while JayaState.IsRunning and CONFIG.SEED_LOOP do
+        if not label or not label.Parent then
+            local fresh = ReadSeedLabels()
+            label = fresh and fresh[key]
+        end
+
+        local before = LabelCount(label)
+        if not before or before <= 0 then break end
+
+        remote:FireServer(key)
+        task.wait(UNIT_DELAY)
+
+        local after = LabelCount(label) or before
+        if after < before then
+            bought = bought + (before - after)
+            fails = 0
+        else
+            fails = fails + 1
+            if fails >= 3 then
+                Log("Stok '" .. key .. "' tidak berkurang setelah 3x beli (sheckles kurang / argumen remote berubah?)")
+                break
+            end
+        end
+    end
+    return bought
+end
+
+local function WarnSeedOnce(msg)
+    Log(msg)
+    if not seedWarned then
+        seedWarned = true
+        JayaLib:Notify("Shop Seed", msg, 4)
+    end
+end
+
 local function BuySeeds()
     if not JayaState.IsRunning or isBuyingSeeds then return end
     isBuyingSeeds = true
 
-    local remotes = FindRemotes()
-    local available = FindAvailableSeeds()
-    local targets = {}
-
-    local hasSeedFilter = next(CONFIG.SELECTED_SEED_NAMES) ~= nil
-    for _, s in ipairs(available) do
-        if not hasSeedFilter or (CONFIG.SELECTED_SEED_NAMES[s] == true) then
-            table.insert(targets, s)
+    local ok, err = pcall(function()
+        local remote = GetSeedRemote()
+        if not remote then
+            WarnSeedOnce("Remote BuySeedStock tidak ditemukan")
+            return
         end
-    end
 
-    for _, seedName in ipairs(targets) do
-        if not JayaState.IsRunning or not CONFIG.SEED_LOOP then break end
+        local labels = ReadSeedLabels()
+        if not labels then
+            WarnSeedOnce("UI Seed_Shop tidak terbaca")
+            return
+        end
 
-        local cleanName = seedName:gsub(" Seed$", "")
+        -- Tidak ada benih dipilih = beli SEMUA benih yang ada stoknya
+        local hasFilter = next(CONFIG.SELECTED_SEED_NAMES) ~= nil
+        local totalBought, kinds = 0, 0
 
-        for _, rem in ipairs(remotes) do
-            pcall(function()
-                if rem:IsA("RemoteEvent") then
-                    rem:FireServer("Buy", seedName, 1)
-                    rem:FireServer("BuySeed", seedName, 1)
-                    rem:FireServer(seedName, 1)
-                    if cleanName ~= seedName then
-                        rem:FireServer("Buy", cleanName, 1)
-                        rem:FireServer("BuySeed", cleanName, 1)
-                        rem:FireServer(cleanName, 1)
-                    end
-                elseif rem:IsA("RemoteFunction") then
-                    rem:InvokeServer("Buy", seedName, 1)
-                    if cleanName ~= seedName then
-                        rem:InvokeServer("Buy", cleanName, 1)
+        for _, display in ipairs(FindAvailableSeeds()) do
+            if not JayaState.IsRunning or not CONFIG.SEED_LOOP then break end
+            if not hasFilter or CONFIG.SELECTED_SEED_NAMES[display] == true then
+                local key = ToSeedKey(display)
+                local label = labels[key]
+                if label then
+                    local got = BuySeedUntilEmpty(remote, key, label)
+                    if got > 0 then
+                        Log("Beli " .. key .. " x" .. got)
+                        totalBought = totalBought + got
+                        kinds = kinds + 1
                     end
                 end
-            end)
+            end
         end
-        task.wait(FIXED_PURCHASE_DELAY)
-    end
 
+        if totalBought > 0 then
+            JayaLib:Notify("Shop Seed", "Membeli " .. totalBought .. " benih (" .. kinds .. " jenis)", 3)
+        end
+    end)
+
+    if not ok then Log("ERROR:", err) end
     isBuyingSeeds = false
 end
 
@@ -1474,11 +1583,14 @@ SecSeed:AddToggle({
     Default = false,
     Callback = function(val)
         CONFIG.SEED_LOOP = val
+        seedLoopGen = seedLoopGen + 1          -- cegah loop ganda saat toggle cepat ON/OFF
+        local myGen = seedLoopGen
         if CategoryBar then CategoryBar:SetStatus("Seed", val) end
         if val then
+            seedWarned = false
             JayaLib:Notify("Shop Seed", "Auto Buy Seed: AKTIF", 2.5)
             task.spawn(function()
-                while JayaState.IsRunning and CONFIG.SEED_LOOP do
+                while JayaState.IsRunning and CONFIG.SEED_LOOP and seedLoopGen == myGen do
                     BuySeeds()
                     task.wait(CONFIG.SEED_LOOP_INTERVAL)
                 end
@@ -1674,7 +1786,7 @@ task.spawn(function()
             lastRestockMin = m
             print("[JAYA SC] Restock 5-menit tiba (Menit " .. tostring(m) .. ")! Memulai siklus auto buy instan...")
             if CONFIG.SEED_LOOP then
-                task.spawn(BuySeeds)
+                task.delay(2, BuySeeds) -- beri waktu UI toko memperbarui stok
             end
             if CONFIG.EGG_LOOP then
                 task.spawn(BuyEggs)

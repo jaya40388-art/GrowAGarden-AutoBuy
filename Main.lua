@@ -69,7 +69,7 @@ end
 
 function JayaState:Shutdown()
     if not self.IsRunning then return end
-    self.IsRunning = false -- Menghentikan seketika semua loop aktif
+    self.IsRunning = false -- Berhenti seketika semua loop aktif
 
     for _, conn in ipairs(self.Connections) do
         pcall(function() conn:Disconnect() end)
@@ -146,26 +146,25 @@ local function GetLogoAsset()
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- DATA & KATALOG 3 TOKO (SEEDS, EGGS, GEARS)
+-- DATA & KATALOG 3 TOKO (FIXED DELAY = 0.4s)
 -- ═══════════════════════════════════════════════════════════════
+local FIXED_PURCHASE_DELAY = 0.4 -- Delay tetap 0.4s (tersembunyi dari user)
+
 local CONFIG = {
     -- 1. Shop Seed
-    SEED_DELAY = 0.3,
     SEED_LOOP = false,
-    SEED_LOOP_INTERVAL = 5,
+    SEED_LOOP_INTERVAL = 3,
     SELECTED_SEED_NAMES = {},    -- [name] = true
     SELECTED_SEED_RARITIES = {}, -- [rarity] = true
 
     -- 2. Shop Egg
-    EGG_DELAY = 0.5,
     EGG_LOOP = false,
-    EGG_LOOP_INTERVAL = 6,
+    EGG_LOOP_INTERVAL = 3,
     SELECTED_EGGS = {},          -- [eggName] = true
 
     -- 3. Shop Gears
-    GEAR_DELAY = 0.4,
     GEAR_LOOP = false,
-    GEAR_LOOP_INTERVAL = 6,
+    GEAR_LOOP_INTERVAL = 3,
     SELECTED_GEARS = {},         -- [gearName] = true
 }
 
@@ -251,7 +250,6 @@ local function FindRemotes()
     return remotes
 end
 
--- Deteksi Item Dinamis dari Game
 local function FindAvailableSeeds()
     local seeds, set = {}, {}
     for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
@@ -304,7 +302,6 @@ local function FindAvailableGears()
     return gears
 end
 
--- Filter Matching Logic untuk Benih
 local function MatchesSeedFilter(seedName)
     local hasName = next(CONFIG.SELECTED_SEED_NAMES) ~= nil
     local hasRarity = next(CONFIG.SELECTED_SEED_RARITIES) ~= nil
@@ -503,7 +500,7 @@ end
 function JayaLib:CreateWindow(config)
     local titleText = config.Title or "JAYA SC"
     local subText = config.Subtitle or "Grow a Garden"
-    local windowSize = config.Size or UDim2.fromOffset(550, 340)
+    local windowSize = config.Size or UDim2.fromOffset(540, 310)
     local tabWidth = config.TabWidth or 140
 
     local rootParent = GetSafeGuiParent()
@@ -655,11 +652,12 @@ function JayaLib:CreateWindow(config)
 
     MakeDraggable(Topbar, MainFrame)
 
+    -- POIN 1: Hilangkan notifikasi jika script di-minimize
     MinBtn.Activated:Connect(function()
         if not JayaState.IsRunning then return end
         MainFrame.Visible = false
         FloatIcon.Visible = true
-        JayaLib:Notify("JAYA SC", "UI di-minimize. Klik ikon JSC mengambang untuk membuka kembali.", 3)
+        -- Notifikasi ditiadakan sesuai instruksi
     end)
 
     FloatIcon.Activated:Connect(function()
@@ -863,52 +861,7 @@ function JayaLib:CreateWindow(config)
 
             local Items = {}
 
-            -- BUTTON
-            function Items:AddButton(cfg)
-                local bTitle = cfg.Title or "Button"
-                local bCallback = cfg.Callback or function() end
-
-                local btn = CreateInstance("TextButton", {
-                    BackgroundColor3 = JayaLib.BgHover,
-                    BorderSizePixel = 0,
-                    Size = UDim2.new(1, 0, 0, 36),
-                    Text = "",
-                    Parent = SecContent
-                })
-                CreateInstance("UICorner", { CornerRadius = UDim.new(0, 5) }, btn)
-
-                CreateInstance("TextLabel", {
-                    Font = Enum.Font.GothamBold,
-                    Text = bTitle,
-                    TextColor3 = JayaLib.TextMain,
-                    TextSize = 12,
-                    TextXAlignment = Enum.TextXAlignment.Left,
-                    BackgroundTransparency = 1,
-                    Position = UDim2.new(0, 10, 0, 0),
-                    Size = UDim2.new(1, -40, 1, 0),
-                    Parent = btn
-                })
-
-                CreateInstance("TextLabel", {
-                    Font = Enum.Font.GothamBold,
-                    Text = "➔",
-                    TextColor3 = JayaLib.AccentColor,
-                    TextSize = 13,
-                    BackgroundTransparency = 1,
-                    Position = UDim2.new(1, -28, 0, 0),
-                    Size = UDim2.new(0, 20, 1, 0),
-                    Parent = btn
-                })
-
-                btn.Activated:Connect(function()
-                    if not JayaState.IsRunning then return end
-                    SpawnRipple(btn, Player:GetMouse().X, Player:GetMouse().Y)
-                    bCallback()
-                end)
-                return btn
-            end
-
-            -- TOGGLE
+            -- TOGGLE SAKLAR (AUTO BUY)
             function Items:AddToggle(cfg)
                 local tTitle = cfg.Title or "Toggle"
                 local tDesc = cfg.Content or cfg.Desc or ""
@@ -918,60 +871,60 @@ function JayaLib:CreateWindow(config)
                 local tog = CreateInstance("TextButton", {
                     BackgroundColor3 = JayaLib.BgHover,
                     BorderSizePixel = 0,
-                    Size = UDim2.new(1, 0, 0, 38),
+                    Size = UDim2.new(1, 0, 0, 42),
                     Text = "",
                     Parent = SecContent
                 })
-                CreateInstance("UICorner", { CornerRadius = UDim.new(0, 5) }, tog)
+                CreateInstance("UICorner", { CornerRadius = UDim.new(0, 6) }, tog)
 
                 local titleLbl = CreateInstance("TextLabel", {
                     Font = Enum.Font.GothamBold,
                     Text = tTitle,
                     TextColor3 = state and JayaLib.TextMain or JayaLib.TextMuted,
-                    TextSize = 12,
+                    TextSize = 12.5,
                     TextXAlignment = Enum.TextXAlignment.Left,
                     BackgroundTransparency = 1,
-                    Position = UDim2.new(0, 10, 0, 4),
-                    Size = UDim2.new(1, -60, 0, 16),
+                    Position = UDim2.new(0, 12, 0, 4),
+                    Size = UDim2.new(1, -70, 0, 18),
                     Parent = tog
                 })
 
                 CreateInstance("TextLabel", {
                     Font = Enum.Font.Gotham,
                     Text = tDesc,
-                    TextColor3 = Color3.fromRGB(120, 120, 135),
+                    TextColor3 = Color3.fromRGB(130, 130, 145),
                     TextSize = 10.5,
                     TextXAlignment = Enum.TextXAlignment.Left,
                     BackgroundTransparency = 1,
-                    Position = UDim2.new(0, 10, 0, 20),
-                    Size = UDim2.new(1, -60, 0, 14),
+                    Position = UDim2.new(0, 12, 0, 22),
+                    Size = UDim2.new(1, -70, 0, 14),
                     Parent = tog
                 })
 
                 local Pill = CreateInstance("Frame", {
                     BackgroundColor3 = state and JayaLib.AccentColor or Color3.fromRGB(50, 50, 65),
                     AnchorPoint = Vector2.new(1, 0.5),
-                    Position = UDim2.new(1, -10, 0.5, 0),
-                    Size = UDim2.new(0, 34, 0, 18),
+                    Position = UDim2.new(1, -12, 0.5, 0),
+                    Size = UDim2.new(0, 36, 0, 20),
                     BorderSizePixel = 0,
                     Parent = tog
                 })
-                CreateInstance("UICorner", { CornerRadius = UDim.new(0, 9) }, Pill)
+                CreateInstance("UICorner", { CornerRadius = UDim.new(1, 0) }, Pill)
 
                 local Knob = CreateInstance("Frame", {
                     BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-                    Position = state and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7),
+                    Position = state and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7),
                     Size = UDim2.new(0, 14, 0, 14),
                     BorderSizePixel = 0,
                     Parent = Pill
                 })
-                CreateInstance("UICorner", { CornerRadius = UDim.new(0, 7) }, Knob)
+                CreateInstance("UICorner", { CornerRadius = UDim.new(1, 0) }, Knob)
 
                 local handler = { Value = state }
                 function handler:Set(val)
                     state = val
                     handler.Value = state
-                    local targetPos = state and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+                    local targetPos = state and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
                     local targetCol = state and JayaLib.AccentColor or Color3.fromRGB(50, 50, 65)
 
                     TweenService:Create(Knob, TweenInfo.new(0.2), { Position = targetPos }):Play()
@@ -986,100 +939,6 @@ function JayaLib:CreateWindow(config)
                     handler:Set(not state)
                 end)
                 return handler
-            end
-
-            -- SLIDER
-            function Items:AddSlider(cfg)
-                local sTitle = cfg.Title or "Slider"
-                local minVal = cfg.Min or 0
-                local maxVal = cfg.Max or 100
-                local currentVal = cfg.Default or minVal
-                local sCallback = cfg.Callback or function() end
-
-                local sliderFrame = CreateInstance("Frame", {
-                    BackgroundColor3 = JayaLib.BgHover,
-                    BorderSizePixel = 0,
-                    Size = UDim2.new(1, 0, 0, 46),
-                    Parent = SecContent
-                })
-                CreateInstance("UICorner", { CornerRadius = UDim.new(0, 5) }, sliderFrame)
-
-                CreateInstance("TextLabel", {
-                    Font = Enum.Font.GothamBold,
-                    Text = sTitle,
-                    TextColor3 = JayaLib.TextMain,
-                    TextSize = 12,
-                    TextXAlignment = Enum.TextXAlignment.Left,
-                    BackgroundTransparency = 1,
-                    Position = UDim2.new(0, 10, 0, 6),
-                    Size = UDim2.new(1, -80, 0, 16),
-                    Parent = sliderFrame
-                })
-
-                local valLbl = CreateInstance("TextLabel", {
-                    Font = Enum.Font.GothamBold,
-                    Text = tostring(currentVal),
-                    TextColor3 = JayaLib.AccentColor,
-                    TextSize = 12,
-                    TextXAlignment = Enum.TextXAlignment.Right,
-                    BackgroundTransparency = 1,
-                    Position = UDim2.new(1, -70, 0, 6),
-                    Size = UDim2.new(0, 60, 0, 16),
-                    Parent = sliderFrame
-                })
-
-                local barBg = CreateInstance("TextButton", {
-                    BackgroundColor3 = Color3.fromRGB(45, 45, 60),
-                    BorderSizePixel = 0,
-                    Position = UDim2.new(0, 10, 0, 28),
-                    Size = UDim2.new(1, -20, 0, 8),
-                    Text = "",
-                    Parent = sliderFrame
-                })
-                CreateInstance("UICorner", { CornerRadius = UDim.new(0, 4) }, barBg)
-
-                local fillPct = math.clamp((currentVal - minVal) / (maxVal - minVal), 0, 1)
-                local fillBar = CreateInstance("Frame", {
-                    BackgroundColor3 = JayaLib.AccentColor,
-                    BorderSizePixel = 0,
-                    Size = UDim2.new(fillPct, 0, 1, 0),
-                    Parent = barBg
-                })
-                CreateInstance("UICorner", { CornerRadius = UDim.new(0, 4) }, fillBar)
-
-                local sliding = false
-                local function updateSlider(input)
-                    if not JayaState.IsRunning then return end
-                    local relX = math.clamp((input.Position.X - barBg.AbsolutePosition.X) / barBg.AbsoluteSize.X, 0, 1)
-                    local calculated = math.floor((minVal + ((maxVal - minVal) * relX)) * 10) / 10
-                    currentVal = calculated
-                    valLbl.Text = tostring(currentVal)
-                    fillBar.Size = UDim2.new(relX, 0, 1, 0)
-                    sCallback(currentVal)
-                end
-
-                local cBegan = barBg.InputBegan:Connect(function(input)
-                    if not JayaState.IsRunning then return end
-                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                        sliding = true
-                        updateSlider(input)
-                    end
-                end)
-                JayaState:TrackConnection(cBegan)
-
-                local cEnded = UserInputService.InputEnded:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                        sliding = false
-                    end
-                end)
-                JayaState:TrackConnection(cEnded)
-
-                local cChanged = UserInputService.InputChanged:Connect(function(input)
-                    if sliding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-                        updateSlider(input)
-                    end
-                end)
-                JayaState:TrackConnection(cChanged)
             end
 
             -- DROPDOWN (MULTI & SINGLE)
@@ -1240,59 +1099,6 @@ function JayaLib:CreateWindow(config)
                     end
                     refreshSectionHeight()
                 end)
-
-                return {
-                    Reset = function()
-                        selected = isMulti and {} or options[1]
-                        refreshOptions()
-                        dCallback(selected)
-                    end
-                }
-            end
-
-            -- PARAGRAPH
-            function Items:AddParagraph(cfg)
-                local pTitle = cfg.Title or "Info"
-                local pDesc = cfg.Content or cfg.Desc or ""
-
-                local pFrame = CreateInstance("Frame", {
-                    BackgroundColor3 = JayaLib.BgHover,
-                    BorderSizePixel = 0,
-                    Size = UDim2.new(1, 0, 0, 48),
-                    Parent = SecContent
-                })
-                CreateInstance("UICorner", { CornerRadius = UDim.new(0, 5) }, pFrame)
-
-                local pTitleLbl = CreateInstance("TextLabel", {
-                    Font = Enum.Font.GothamBold,
-                    Text = pTitle,
-                    TextColor3 = JayaLib.AccentColor,
-                    TextSize = 12,
-                    TextXAlignment = Enum.TextXAlignment.Left,
-                    BackgroundTransparency = 1,
-                    Position = UDim2.new(0, 10, 0, 6),
-                    Size = UDim2.new(1, -20, 0, 16),
-                    Parent = pFrame
-                })
-
-                local pDescLbl = CreateInstance("TextLabel", {
-                    Font = Enum.Font.Gotham,
-                    Text = pDesc,
-                    TextColor3 = JayaLib.TextMuted,
-                    TextSize = 11,
-                    TextWrapped = true,
-                    TextXAlignment = Enum.TextXAlignment.Left,
-                    BackgroundTransparency = 1,
-                    Position = UDim2.new(0, 10, 0, 24),
-                    Size = UDim2.new(1, -20, 0, 20),
-                    Parent = pFrame
-                })
-
-                local function setFunc(newTitle, newDesc)
-                    pTitleLbl.Text = newTitle or pTitleLbl.Text
-                    pDescLbl.Text = newDesc or pDescLbl.Text
-                end
-                return { Set = setFunc }
             end
 
             return Items
@@ -1305,28 +1111,21 @@ function JayaLib:CreateWindow(config)
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- TAHAP 3: STRUKTUR 3 TOKO (SHOP SEED, SHOP EGG, SHOP GEARS)
+-- TAHAP 3 (PENYESUAIAN): 3 TOKO DENGAN TOGGLE AUTO BUY TERPADU
 -- ═══════════════════════════════════════════════════════════════
 
 local Window = JayaLib:CreateWindow({
     Title = "JAYA SC",
     Subtitle = "Grow a Garden",
-    Size = UDim2.fromOffset(560, 340),
-    TabWidth = 145
+    Size = UDim2.fromOffset(540, 310),
+    TabWidth = 140
 })
 
 -- ───────────────────────────────────────────────────────────────
--- TOKO 1: 🌱 SHOP SEED (Beli Benih)
+-- TOKO 1: 🌱 SHOP SEED
 -- ───────────────────────────────────────────────────────────────
 local TabSeed = Window:CreateTab({ Name = "Shop Seed", Icon = "🌱" })
-
--- Section 1.1: Kontrol Pembelian Benih
-local SecSeedCtrl = TabSeed:AddSection("Kontrol Pembelian Benih", true)
-
-local SeedStatus = SecSeedCtrl:AddParagraph({
-    Title = "Status Benih",
-    Content = "Siap membeli. Silakan atur filter kelangkaan atau nama benih di bawah."
-})
+local SecSeed = TabSeed:AddSection("Filter Kelangkaan & Nama Benih", true)
 
 local isBuyingSeeds = false
 local function BuySeeds()
@@ -1341,18 +1140,8 @@ local function BuySeeds()
         if MatchesSeedFilter(s) then table.insert(targets, s) end
     end
 
-    if #targets == 0 then
-        SeedStatus.Set("Status: Kosong", "Tidak ada benih yang sesuai filter!")
-        JayaLib:Notify("Shop Seed", "Tidak ada benih yang lolos filter!", 3)
-        isBuyingSeeds = false
-        return
-    end
-
-    SeedStatus.Set("Status: Membeli...", string.format("Memproses %d benih...", #targets))
-    local okCount = 0
-
     for _, seedName in ipairs(targets) do
-        if not JayaState.IsRunning then break end
+        if not JayaState.IsRunning or not CONFIG.SEED_LOOP then break end
 
         for _, rem in ipairs(remotes) do
             pcall(function()
@@ -1365,24 +1154,21 @@ local function BuySeeds()
                 end
             end)
         end
-        okCount = okCount + 1
-        task.wait(CONFIG.SEED_DELAY)
+        task.wait(FIXED_PURCHASE_DELAY)
     end
 
-    local summary = string.format("Selesai diproses! (%d benih)", okCount)
-    SeedStatus.Set("Status: Selesai ✅", summary)
-    JayaLib:Notify("Shop Seed", summary, 3.5)
     isBuyingSeeds = false
 end
 
-SecSeedCtrl:AddToggle({
-    Title = "Auto Buy Seed (Loop)",
-    Desc = "Membeli benih berulang-ulang secara otomatis",
+-- Tombol Auto Buy Seed (Desain Saklar / Toggle)
+SecSeed:AddToggle({
+    Title = "Auto Buy Seed",
+    Desc = "Membeli benih terpilih secara otomatis",
     Default = false,
     Callback = function(val)
         CONFIG.SEED_LOOP = val
         if val then
-            JayaLib:Notify("Shop Seed", "Loop Beli Benih: AKTIF", 2.5)
+            JayaLib:Notify("Shop Seed", "Auto Buy Seed: AKTIF", 2.5)
             task.spawn(function()
                 while JayaState.IsRunning and CONFIG.SEED_LOOP do
                     BuySeeds()
@@ -1390,32 +1176,12 @@ SecSeedCtrl:AddToggle({
                 end
             end)
         else
-            JayaLib:Notify("Shop Seed", "Loop Beli Benih: DIMATIKAN", 2.5)
+            JayaLib:Notify("Shop Seed", "Auto Buy Seed: DIMATIKAN", 2.5)
         end
     end
 })
 
-SecSeedCtrl:AddButton({
-    Title = "Beli Benih Terpilih (1x Jalan)",
-    Callback = function()
-        task.spawn(BuySeeds)
-    end
-})
-
-SecSeedCtrl:AddSlider({
-    Title = "Delay Beli Benih (detik)",
-    Min = 0.1,
-    Max = 2.0,
-    Default = CONFIG.SEED_DELAY,
-    Callback = function(val)
-        CONFIG.SEED_DELAY = val
-    end
-})
-
--- Section 1.2: Filter & Pilihan Benih
-local SecSeedFilter = TabSeed:AddSection("Filter Kelangkaan & Nama Benih", true)
-
-local rarityDrop = SecSeedFilter:AddDropdown({
+SecSeed:AddDropdown({
     Title = "Filter Rarity Benih",
     Multi = true,
     Options = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"},
@@ -1429,7 +1195,7 @@ local rarityDrop = SecSeedFilter:AddDropdown({
 })
 
 local seedList = FindAvailableSeeds()
-local nameDrop = SecSeedFilter:AddDropdown({
+SecSeed:AddDropdown({
     Title = "Pilih Nama Benih",
     Multi = true,
     Options = seedList,
@@ -1442,29 +1208,11 @@ local nameDrop = SecSeedFilter:AddDropdown({
     end
 })
 
-SecSeedFilter:AddButton({
-    Title = "Reset Filter Benih (Pilih Semua)",
-    Callback = function()
-        CONFIG.SELECTED_SEED_RARITIES = {}
-        CONFIG.SELECTED_SEED_NAMES = {}
-        rarityDrop.Reset()
-        nameDrop.Reset()
-        JayaLib:Notify("Shop Seed", "Filter benih di-reset: Membeli semua benih.", 3)
-    end
-})
-
 -- ───────────────────────────────────────────────────────────────
--- TOKO 2: 🥚 SHOP EGG (Beli Telur / Pets)
+-- TOKO 2: 🥚 SHOP EGG
 -- ───────────────────────────────────────────────────────────────
 local TabEgg = Window:CreateTab({ Name = "Shop Egg", Icon = "🥚" })
-
--- Section 2.1: Kontrol Pembelian Telur
-local SecEggCtrl = TabEgg:AddSection("Kontrol Pembelian Telur", true)
-
-local EggStatus = SecEggCtrl:AddParagraph({
-    Title = "Status Telur",
-    Content = "Siap membeli telur. Pilih jenis telur yang ingin dibeli di bawah."
-})
+local SecEgg = TabEgg:AddSection("Pilihan Jenis Telur", true)
 
 local isBuyingEggs = false
 local function BuyEggs()
@@ -1482,18 +1230,8 @@ local function BuyEggs()
         end
     end
 
-    if #targets == 0 then
-        EggStatus.Set("Status: Kosong", "Tidak ada telur yang dipilih!")
-        JayaLib:Notify("Shop Egg", "Tidak ada telur yang dipilih!", 3)
-        isBuyingEggs = false
-        return
-    end
-
-    EggStatus.Set("Status: Membeli...", string.format("Memproses %d jenis telur...", #targets))
-    local count = 0
-
     for _, eggName in ipairs(targets) do
-        if not JayaState.IsRunning then break end
+        if not JayaState.IsRunning or not CONFIG.EGG_LOOP then break end
 
         for _, rem in ipairs(remotes) do
             pcall(function()
@@ -1507,24 +1245,21 @@ local function BuyEggs()
                 end
             end)
         end
-        count = count + 1
-        task.wait(CONFIG.EGG_DELAY)
+        task.wait(FIXED_PURCHASE_DELAY)
     end
 
-    local summary = string.format("Selesai diproses! (%d telur)", count)
-    EggStatus.Set("Status: Selesai ✅", summary)
-    JayaLib:Notify("Shop Egg", summary, 3.5)
     isBuyingEggs = false
 end
 
-SecEggCtrl:AddToggle({
-    Title = "Auto Buy Egg (Loop)",
-    Desc = "Membeli telur berulang-ulang secara otomatis",
+-- Tombol Auto Buy Egg (Desain Saklar / Toggle)
+SecEgg:AddToggle({
+    Title = "Auto Buy Egg",
+    Desc = "Membeli telur terpilih secara otomatis",
     Default = false,
     Callback = function(val)
         CONFIG.EGG_LOOP = val
         if val then
-            JayaLib:Notify("Shop Egg", "Loop Beli Telur: AKTIF", 2.5)
+            JayaLib:Notify("Shop Egg", "Auto Buy Egg: AKTIF", 2.5)
             task.spawn(function()
                 while JayaState.IsRunning and CONFIG.EGG_LOOP do
                     BuyEggs()
@@ -1532,33 +1267,13 @@ SecEggCtrl:AddToggle({
                 end
             end)
         else
-            JayaLib:Notify("Shop Egg", "Loop Beli Telur: DIMATIKAN", 2.5)
+            JayaLib:Notify("Shop Egg", "Auto Buy Egg: DIMATIKAN", 2.5)
         end
     end
 })
 
-SecEggCtrl:AddButton({
-    Title = "Beli Telur Terpilih (1x Jalan)",
-    Callback = function()
-        task.spawn(BuyEggs)
-    end
-})
-
-SecEggCtrl:AddSlider({
-    Title = "Delay Beli Telur (detik)",
-    Min = 0.2,
-    Max = 3.0,
-    Default = CONFIG.EGG_DELAY,
-    Callback = function(val)
-        CONFIG.EGG_DELAY = val
-    end
-})
-
--- Section 2.2: Pilihan Jenis Telur
-local SecEggFilter = TabEgg:AddSection("Pilihan Jenis Telur", true)
-
 local eggList = FindAvailableEggs()
-local eggDrop = SecEggFilter:AddDropdown({
+SecEgg:AddDropdown({
     Title = "Pilih Jenis Telur",
     Multi = true,
     Options = eggList,
@@ -1571,27 +1286,11 @@ local eggDrop = SecEggFilter:AddDropdown({
     end
 })
 
-SecEggFilter:AddButton({
-    Title = "Reset Pilihan Telur (Beli Semua Telur)",
-    Callback = function()
-        CONFIG.SELECTED_EGGS = {}
-        eggDrop.Reset()
-        JayaLib:Notify("Shop Egg", "Pilihan telur di-reset: Membeli semua telur.", 3)
-    end
-})
-
 -- ───────────────────────────────────────────────────────────────
--- TOKO 3: ⚙️ SHOP GEARS (Beli Alat / Peralatan Berkebun)
+-- TOKO 3: ⚙️ SHOP GEARS
 -- ───────────────────────────────────────────────────────────────
 local TabGear = Window:CreateTab({ Name = "Shop Gears", Icon = "⚙️" })
-
--- Section 3.1: Kontrol Pembelian Gears
-local SecGearCtrl = TabGear:AddSection("Kontrol Pembelian Alat & Gears", true)
-
-local GearStatus = SecGearCtrl:AddParagraph({
-    Title = "Status Gears",
-    Content = "Siap membeli alat/gears. Pilih peralatan yang ingin dibeli di bawah."
-})
+local SecGear = TabGear:AddSection("Pilihan Jenis Alat & Peralatan", true)
 
 local isBuyingGears = false
 local function BuyGears()
@@ -1609,18 +1308,8 @@ local function BuyGears()
         end
     end
 
-    if #targets == 0 then
-        GearStatus.Set("Status: Kosong", "Tidak ada alat yang dipilih!")
-        JayaLib:Notify("Shop Gears", "Tidak ada alat yang dipilih!", 3)
-        isBuyingGears = false
-        return
-    end
-
-    GearStatus.Set("Status: Membeli...", string.format("Memproses %d jenis alat...", #targets))
-    local count = 0
-
     for _, gearName in ipairs(targets) do
-        if not JayaState.IsRunning then break end
+        if not JayaState.IsRunning or not CONFIG.GEAR_LOOP then break end
 
         for _, rem in ipairs(remotes) do
             pcall(function()
@@ -1634,24 +1323,21 @@ local function BuyGears()
                 end
             end)
         end
-        count = count + 1
-        task.wait(CONFIG.GEAR_DELAY)
+        task.wait(FIXED_PURCHASE_DELAY)
     end
 
-    local summary = string.format("Selesai diproses! (%d alat)", count)
-    GearStatus.Set("Status: Selesai ✅", summary)
-    JayaLib:Notify("Shop Gears", summary, 3.5)
     isBuyingGears = false
 end
 
-SecGearCtrl:AddToggle({
-    Title = "Auto Buy Gears (Loop)",
-    Desc = "Membeli alat berkebun berulang-ulang secara otomatis",
+-- Tombol Auto Buy Gears (Desain Saklar / Toggle)
+SecGear:AddToggle({
+    Title = "Auto Buy Gears",
+    Desc = "Membeli alat berkebun terpilih secara otomatis",
     Default = false,
     Callback = function(val)
         CONFIG.GEAR_LOOP = val
         if val then
-            JayaLib:Notify("Shop Gears", "Loop Beli Gears: AKTIF", 2.5)
+            JayaLib:Notify("Shop Gears", "Auto Buy Gears: AKTIF", 2.5)
             task.spawn(function()
                 while JayaState.IsRunning and CONFIG.GEAR_LOOP do
                     BuyGears()
@@ -1659,33 +1345,13 @@ SecGearCtrl:AddToggle({
                 end
             end)
         else
-            JayaLib:Notify("Shop Gears", "Loop Beli Gears: DIMATIKAN", 2.5)
+            JayaLib:Notify("Shop Gears", "Auto Buy Gears: DIMATIKAN", 2.5)
         end
     end
 })
 
-SecGearCtrl:AddButton({
-    Title = "Beli Gears Terpilih (1x Jalan)",
-    Callback = function()
-        task.spawn(BuyGears)
-    end
-})
-
-SecGearCtrl:AddSlider({
-    Title = "Delay Beli Gears (detik)",
-    Min = 0.1,
-    Max = 2.5,
-    Default = CONFIG.GEAR_DELAY,
-    Callback = function(val)
-        CONFIG.GEAR_DELAY = val
-    end
-})
-
--- Section 3.2: Pilihan Jenis Gears
-local SecGearFilter = TabGear:AddSection("Pilihan Jenis Alat & Peralatan", true)
-
 local gearList = FindAvailableGears()
-local gearDrop = SecGearFilter:AddDropdown({
+SecGear:AddDropdown({
     Title = "Pilih Jenis Alat / Gear",
     Multi = true,
     Options = gearList,
@@ -1698,16 +1364,7 @@ local gearDrop = SecGearFilter:AddDropdown({
     end
 })
 
-SecGearFilter:AddButton({
-    Title = "Reset Pilihan Gears (Beli Semua Alat)",
-    Callback = function()
-        CONFIG.SELECTED_GEARS = {}
-        gearDrop.Reset()
-        JayaLib:Notify("Shop Gears", "Pilihan gears di-reset: Membeli semua alat.", 3)
-    end
-})
-
 -- ═══════════════════════════════════════════════════════════════
--- NOTIFIKASI PEMBUKA
+-- NOTIFIKASI SAMBUTAN
 -- ═══════════════════════════════════════════════════════════════
-JayaLib:Notify("JAYA SC", "Selamat datang! 3 Toko (Seed, Egg, Gears) siap digunakan.", 5)
+JayaLib:Notify("JAYA SC", "Selamat datang! Toko Seed, Egg, dan Gears siap digunakan.", 4)

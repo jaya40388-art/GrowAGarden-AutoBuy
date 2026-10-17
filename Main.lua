@@ -783,6 +783,129 @@ function JayaLib:CreateWindow(config)
         tabCount = tabCount + 1
 
         local Tab = {}
+        Tab.PageScroll = PageScroll
+        Tab.PageList = PageList
+        Tab.UpdateScroll = updateScroll
+
+        function Tab:AddCategoryBar(cfg)
+            local catTitle = cfg.Title or "PILIH KATEGORI TOKO"
+            local options = cfg.Options or {}
+            local onSelect = cfg.Callback or function() end
+
+            local CatFrame = CreateInstance("Frame", {
+                BackgroundColor3 = JayaLib.BgCard,
+                BorderSizePixel = 0,
+                Size = UDim2.new(1, 0, 0, 72),
+                Parent = PageScroll
+            })
+            CreateInstance("UICorner", { CornerRadius = UDim.new(0, 6) }, CatFrame)
+            CreateInstance("UIStroke", { Color = JayaLib.BorderCol, Thickness = 1 }, CatFrame)
+
+            local CatTitleLbl = CreateInstance("TextLabel", {
+                Font = Enum.Font.GothamBold,
+                Text = catTitle,
+                TextColor3 = JayaLib.TextMuted,
+                TextSize = 10.5,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0, 10, 0, 6),
+                Size = UDim2.new(1, -20, 0, 14),
+                Parent = CatFrame
+            })
+
+            local BtnRow = CreateInstance("Frame", {
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0, 8, 0, 24),
+                Size = UDim2.new(1, -16, 0, 40),
+                Parent = CatFrame
+            })
+            local RowLayout = CreateInstance("UIListLayout", {
+                FillDirection = Enum.FillDirection.Horizontal,
+                Padding = UDim.new(0, 6),
+                SortOrder = Enum.SortOrder.LayoutOrder,
+                Parent = BtnRow
+            })
+
+            local buttons = {}
+            local activeCat = nil
+
+            local function refreshButtons()
+                for catId, data in pairs(buttons) do
+                    local isSel = (activeCat == catId)
+                    local statusDot = data.IsActive and " •" or ""
+                    data.Btn.Text = (data.Icon .. " " .. data.Name .. statusDot)
+                    if isSel then
+                        data.Btn.BackgroundColor3 = JayaLib.AccentColor
+                        data.Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                        data.Stroke.Color = Color3.fromRGB(52, 211, 153)
+                    else
+                        data.Btn.BackgroundColor3 = JayaLib.BgHover
+                        data.Btn.TextColor3 = data.IsActive and JayaLib.AccentColor or JayaLib.TextMuted
+                        data.Stroke.Color = JayaLib.BorderCol
+                    end
+                end
+            end
+
+            local count = #options
+            local btnScale = (count > 0) and (1 / count) or 1
+            local padOffset = (count > 1) and math.floor(6 * (count - 1) / count) or 0
+
+            for idx, opt in ipairs(options) do
+                local btn = CreateInstance("TextButton", {
+                    BackgroundColor3 = JayaLib.BgHover,
+                    BorderSizePixel = 0,
+                    Size = UDim2.new(btnScale, -padOffset, 1, 0),
+                    Text = (opt.Icon and (opt.Icon .. " ") or "") .. opt.Name,
+                    TextColor3 = JayaLib.TextMuted,
+                    TextSize = 11,
+                    Font = Enum.Font.GothamBold,
+                    LayoutOrder = idx,
+                    Parent = BtnRow
+                })
+                CreateInstance("UICorner", { CornerRadius = UDim.new(0, 6) }, btn)
+                local stroke = CreateInstance("UIStroke", { Color = JayaLib.BorderCol, Thickness = 1 }, btn)
+
+                buttons[opt.Id] = {
+                    Btn = btn,
+                    Stroke = stroke,
+                    Name = opt.Name,
+                    Icon = opt.Icon or "",
+                    IsActive = false
+                }
+
+                btn.Activated:Connect(function()
+                    if not JayaState.IsRunning then return end
+                    SpawnRipple(btn, Player:GetMouse().X, Player:GetMouse().Y)
+                    if activeCat == opt.Id then
+                        activeCat = nil
+                    else
+                        activeCat = opt.Id
+                    end
+                    refreshButtons()
+                    onSelect(activeCat)
+                end)
+            end
+
+            refreshButtons()
+
+            local barController = {}
+            function barController:Select(id)
+                activeCat = id
+                refreshButtons()
+                onSelect(activeCat)
+            end
+            function barController:SetStatus(id, isActive)
+                if buttons[id] then
+                    buttons[id].IsActive = isActive
+                    refreshButtons()
+                end
+            end
+            function barController:GetActive()
+                return activeCat
+            end
+
+            return barController
+        end
 
         function Tab:AddSection(secTitle, isOpen)
             local isExpanded = (isOpen == nil and true or isOpen)
@@ -860,6 +983,12 @@ function JayaLib:CreateWindow(config)
             end)
 
             local Items = {}
+            Items.Frame = SecFrame
+
+            function Items:SetVisible(val)
+                SecFrame.Visible = val
+                updateScroll()
+            end
 
             -- TOGGLE SAKLAR (AUTO BUY)
             function Items:AddToggle(cfg)
@@ -1122,10 +1251,77 @@ local Window = JayaLib:CreateWindow({
 })
 
 -- ───────────────────────────────────────────────────────────────
--- TOKO 1: 🌱 SHOP SEED
+-- MENU UTAMA: 🛒 SHOP (SATU MENU DENGAN 3 PILIHAN KATEGORI)
 -- ───────────────────────────────────────────────────────────────
-local TabSeed = Window:CreateTab({ Name = "Shop Seed", Icon = "🌱" })
-local SecSeed = TabSeed:AddSection("Filter Kelangkaan & Nama Benih", true)
+local TabShop = Window:CreateTab({ Name = "Shop", Icon = "🛒" })
+
+local CategoryBar
+local SecSeed, SecEgg, SecGear, GuideCard
+
+-- Bar 3 Pilihan Kategori di Layar Kanan (Shop Seed, Shop Egg, Shop Gears)
+CategoryBar = TabShop:AddCategoryBar({
+    Title = "PILIHAN TOKO (KLIK UNTUK MEMBUKA MENU)",
+    Options = {
+        { Id = "Seed", Name = "Shop Seed", Icon = "🌱" },
+        { Id = "Egg",  Name = "Shop Egg",  Icon = "🥚" },
+        { Id = "Gear", Name = "Shop Gears", Icon = "⚙️" },
+    },
+    Callback = function(selectedId)
+        if GuideCard then
+            GuideCard.Visible = (selectedId == nil)
+        end
+        if SecSeed then
+            SecSeed:SetVisible(selectedId == "Seed")
+        end
+        if SecEgg then
+            SecEgg:SetVisible(selectedId == "Egg")
+        end
+        if SecGear then
+            SecGear:SetVisible(selectedId == "Gear")
+        end
+    end
+})
+
+-- Kartu Panduan yang Muncul Ketika Belum Memilih Kategori
+GuideCard = CreateInstance("Frame", {
+    BackgroundColor3 = JayaLib.BgCard,
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 115),
+    Parent = TabShop.PageScroll
+})
+CreateInstance("UICorner", { CornerRadius = UDim.new(0, 6) }, GuideCard)
+CreateInstance("UIStroke", { Color = JayaLib.BorderCol, Thickness = 1 }, GuideCard)
+
+CreateInstance("TextLabel", {
+    Font = Enum.Font.GothamBold,
+    Text = "🛒 Kategori Toko Tersedia",
+    TextColor3 = JayaLib.TextMain,
+    TextSize = 13,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 12, 0, 10),
+    Size = UDim2.new(1, -24, 0, 20),
+    Parent = GuideCard
+})
+
+CreateInstance("TextLabel", {
+    Font = Enum.Font.Gotham,
+    Text = "Silakan klik salah satu pilihan toko di atas untuk membuka menu pembelian otomatis & filternya:\n\n• 🌱 Shop Seed : Filter Kelangkaan & Nama Benih\n• 🥚 Shop Egg : Pilihan Jenis Telur\n• ⚙️ Shop Gears : Pilihan Alat & Perlengkapan Berkebun",
+    TextColor3 = JayaLib.TextMuted,
+    TextSize = 11,
+    TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Top,
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 12, 0, 34),
+    Size = UDim2.new(1, -24, 0, 75),
+    Parent = GuideCard
+})
+
+-- ───────────────────────────────────────────────────────────────
+-- PILIHAN 1: 🌱 SHOP SEED
+-- ───────────────────────────────────────────────────────────────
+SecSeed = TabShop:AddSection("🌱 Menu Shop Seed (Benih)", true)
 
 local isBuyingSeeds = false
 local function BuySeeds()
@@ -1167,6 +1363,7 @@ SecSeed:AddToggle({
     Default = false,
     Callback = function(val)
         CONFIG.SEED_LOOP = val
+        if CategoryBar then CategoryBar:SetStatus("Seed", val) end
         if val then
             JayaLib:Notify("Shop Seed", "Auto Buy Seed: AKTIF", 2.5)
             task.spawn(function()
@@ -1209,10 +1406,9 @@ SecSeed:AddDropdown({
 })
 
 -- ───────────────────────────────────────────────────────────────
--- TOKO 2: 🥚 SHOP EGG
+-- PILIHAN 2: 🥚 SHOP EGG
 -- ───────────────────────────────────────────────────────────────
-local TabEgg = Window:CreateTab({ Name = "Shop Egg", Icon = "🥚" })
-local SecEgg = TabEgg:AddSection("Pilihan Jenis Telur", true)
+SecEgg = TabShop:AddSection("🥚 Menu Shop Egg (Telur)", true)
 
 local isBuyingEggs = false
 local function BuyEggs()
@@ -1258,6 +1454,7 @@ SecEgg:AddToggle({
     Default = false,
     Callback = function(val)
         CONFIG.EGG_LOOP = val
+        if CategoryBar then CategoryBar:SetStatus("Egg", val) end
         if val then
             JayaLib:Notify("Shop Egg", "Auto Buy Egg: AKTIF", 2.5)
             task.spawn(function()
@@ -1287,10 +1484,9 @@ SecEgg:AddDropdown({
 })
 
 -- ───────────────────────────────────────────────────────────────
--- TOKO 3: ⚙️ SHOP GEARS
+-- PILIHAN 3: ⚙️ SHOP GEARS
 -- ───────────────────────────────────────────────────────────────
-local TabGear = Window:CreateTab({ Name = "Shop Gears", Icon = "⚙️" })
-local SecGear = TabGear:AddSection("Pilihan Jenis Alat & Peralatan", true)
+SecGear = TabShop:AddSection("⚙️ Menu Shop Gears (Alat Berkebun)", true)
 
 local isBuyingGears = false
 local function BuyGears()
@@ -1336,6 +1532,7 @@ SecGear:AddToggle({
     Default = false,
     Callback = function(val)
         CONFIG.GEAR_LOOP = val
+        if CategoryBar then CategoryBar:SetStatus("Gear", val) end
         if val then
             JayaLib:Notify("Shop Gears", "Auto Buy Gears: AKTIF", 2.5)
             task.spawn(function()
@@ -1364,7 +1561,12 @@ SecGear:AddDropdown({
     end
 })
 
+-- Sembunyikan ketiga menu hingga user memilih salah satu tombol kategori
+SecSeed:SetVisible(false)
+SecEgg:SetVisible(false)
+SecGear:SetVisible(false)
+
 -- ═══════════════════════════════════════════════════════════════
 -- NOTIFIKASI SAMBUTAN
 -- ═══════════════════════════════════════════════════════════════
-JayaLib:Notify("JAYA SC", "Selamat datang! Toko Seed, Egg, dan Gears siap digunakan.", 4)
+JayaLib:Notify("JAYA SC", "Selamat datang! Menu Shop terpadu siap digunakan.", 4)

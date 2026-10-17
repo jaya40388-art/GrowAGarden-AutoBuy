@@ -8,7 +8,91 @@
 ]]
 
 -- ═══════════════════════════════════════════════════════════════
--- 1. SERVICES & COMPATIBILITY LAYER
+-- TAHAP 1: VALIDASI GAME (GAME LOCK / WHITELIST)
+-- ═══════════════════════════════════════════════════════════════
+local VALID_PLACE_IDS = {
+    [126884695634066] = true, -- Grow a Garden (Main Place)
+}
+local VALID_GAME_IDS = {
+    [7436755782] = true,      -- Grow a Garden (Universe ID)
+}
+
+local function ValidateGame()
+    if VALID_PLACE_IDS[game.PlaceId] or VALID_GAME_IDS[game.GameId] then
+        return true
+    end
+
+    local mps = game:GetService("MarketplaceService")
+    local success, productInfo = pcall(function()
+        return mps:GetProductInfo(game.PlaceId)
+    end)
+    if success and productInfo and productInfo.Name then
+        if productInfo.Name:lower():find("grow a garden") then
+            return true
+        end
+    end
+
+    return false
+end
+
+if not ValidateGame() then
+    local StarterGui = game:GetService("StarterGui")
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = "⛔ JAYA SC: Akses Ditolak",
+            Text = "Script ini khusus untuk game Roblox 'Grow a Garden'!",
+            Duration = 6
+        })
+    end)
+    warn("[JAYA SC] Akses ditolak! PlaceId (" .. tostring(game.PlaceId) .. ") tidak cocok dengan Grow a Garden.")
+    return
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- TAHAP 2: LIFECYCLE CONTROLLER & CLEAN SHUTDOWN (MAID ENGINE)
+-- ═══════════════════════════════════════════════════════════════
+local JayaState = {
+    IsRunning = true,
+    Connections = {},
+    UIInstances = {},
+}
+
+function JayaState:TrackConnection(conn)
+    table.insert(self.Connections, conn)
+    return conn
+end
+
+function JayaState:TrackUI(gui)
+    table.insert(self.UIInstances, gui)
+    return gui
+end
+
+function JayaState:Shutdown()
+    if not self.IsRunning then return end
+    self.IsRunning = false -- Menghentikan seketika semua loop aktif
+
+    for _, conn in ipairs(self.Connections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    self.Connections = {}
+
+    for _, ui in ipairs(self.UIInstances) do
+        pcall(function() ui:Destroy() end)
+    end
+    self.UIInstances = {}
+
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "JAYA SC",
+            Text = "Script telah dimatikan dan berhenti total.",
+            Duration = 4
+        })
+    end)
+    print("[JAYA SC] Script successfully stopped. No background processes running.")
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- SERVICES & UTILITIES
 -- ═══════════════════════════════════════════════════════════════
 local Players = game:GetService("Players")
 local Player = Players.LocalPlayer
@@ -34,7 +118,7 @@ local function GetSafeGuiParent()
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- 2. LOGO ASSET LOADER (JSC LOGO)
+-- LOGO ASSET LOADER (JSC LOGO)
 -- ═══════════════════════════════════════════════════════════════
 local LOGO_URL = "https://raw.githubusercontent.com/jaya40388-art/GrowAGarden-AutoBuy/refs/heads/main/logo.png"
 local CACHED_LOGO_ASSET = nil
@@ -62,26 +146,27 @@ local function GetLogoAsset()
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- 3. GAME CONFIGURATION & LOGIC (GROW A GARDEN)
+-- DATA & KATALOG 3 TOKO (SEEDS, EGGS, GEARS)
 -- ═══════════════════════════════════════════════════════════════
 local CONFIG = {
-    DELAY_BETWEEN_PURCHASES = 0.3,
-    AUTO_RETRY = true,
-    MAX_RETRIES = 3,
-    BUY_QUANTITY = 1,
-    LOOP_MODE = false,
-    LOOP_INTERVAL = 5,
-    SELECTED_NAMES = {},    -- [seedName] = true
-    SELECTED_RARITIES = {}, -- [rarity] = true
-}
+    -- 1. Shop Seed
+    SEED_DELAY = 0.3,
+    SEED_LOOP = false,
+    SEED_LOOP_INTERVAL = 5,
+    SELECTED_SEED_NAMES = {},    -- [name] = true
+    SELECTED_SEED_RARITIES = {}, -- [rarity] = true
 
-local RARITY_COLORS = {
-    Common    = Color3.fromRGB(180, 180, 180),
-    Uncommon  = Color3.fromRGB(52, 211, 153),
-    Rare      = Color3.fromRGB(59, 130, 246),
-    Epic      = Color3.fromRGB(168, 85, 247),
-    Legendary = Color3.fromRGB(245, 158, 11),
-    Mythic    = Color3.fromRGB(244, 63, 94),
+    -- 2. Shop Egg
+    EGG_DELAY = 0.5,
+    EGG_LOOP = false,
+    EGG_LOOP_INTERVAL = 6,
+    SELECTED_EGGS = {},          -- [eggName] = true
+
+    -- 3. Shop Gears
+    GEAR_DELAY = 0.4,
+    GEAR_LOOP = false,
+    GEAR_LOOP_INTERVAL = 6,
+    SELECTED_GEARS = {},         -- [gearName] = true
 }
 
 local SEED_RARITY = {
@@ -126,7 +211,18 @@ local SEED_RARITY = {
     ["Cosmic Seed"]       = "Mythic",
 }
 
-local function FindBuyRemotes()
+local DEFAULT_EGGS = {
+    "Common Egg", "Uncommon Egg", "Rare Egg", "Forest Egg",
+    "Bug Egg", "Bee Egg", "Jungle Egg", "Oasis Egg", "Golden Egg", "Mythic Egg"
+}
+
+local DEFAULT_GEARS = {
+    "Watering Can", "Basic Shovel", "Golden Shovel", "Sprinkler",
+    "Advanced Sprinkler", "Fertilizer", "Harvesting Basket", "Iron Rake", "Scythe", "Master Trowel"
+}
+
+-- Scanner Universal Remotes
+local function FindRemotes()
     local remotes = {}
     local searchPaths = {
         ReplicatedStorage,
@@ -135,8 +231,8 @@ local function FindBuyRemotes()
         ReplicatedStorage:FindFirstChild("RemoteEvents"),
         ReplicatedStorage:FindFirstChild("Network"),
     }
-    local keywords = {"buy", "purchase", "shop", "seed", "store", "item"}
-    
+    local keywords = {"buy", "purchase", "shop", "seed", "egg", "gear", "tool", "store", "item"}
+
     for _, path in ipairs(searchPaths) do
         if path then
             for _, item in ipairs(path:GetDescendants()) do
@@ -155,48 +251,72 @@ local function FindBuyRemotes()
     return remotes
 end
 
-local function FindAllAvailableSeeds()
-    local seeds = {}
-    local set = {}
-    local function add(s, r)
-        if not set[s] then
-            set[s] = true
-            table.insert(seeds, s)
-            if r and not SEED_RARITY[s] then
-                SEED_RARITY[s] = r
+-- Deteksi Item Dinamis dari Game
+local function FindAvailableSeeds()
+    local seeds, set = {}, {}
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj.Name:lower():find("seed") or obj.Name:lower():find("benih") then
+            if not set[obj.Name] then
+                set[obj.Name] = true
+                table.insert(seeds, obj.Name)
             end
         end
     end
-
-    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-        if obj.Name:lower():find("seed") or obj.Name:lower():find("benih") then
-            local r = obj:GetAttribute("Rarity") or (obj:FindFirstChild("Rarity") and obj.Rarity.Value)
-            add(obj.Name, r)
-        end
-    end
-
     if #seeds == 0 then
-        for s, _ in pairs(SEED_RARITY) do
-            add(s, nil)
-        end
+        for s, _ in pairs(SEED_RARITY) do table.insert(seeds, s) end
     end
     table.sort(seeds)
     return seeds
 end
 
-local function MatchesFilter(seedName)
-    local hasNameFilter = next(CONFIG.SELECTED_NAMES) ~= nil
-    local hasRarityFilter = next(CONFIG.SELECTED_RARITIES) ~= nil
+local function FindAvailableEggs()
+    local eggs, set = {}, {}
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj.Name:lower():find("egg") or obj.Name:lower():find("telur") then
+            if not set[obj.Name] then
+                set[obj.Name] = true
+                table.insert(eggs, obj.Name)
+            end
+        end
+    end
+    if #eggs == 0 then
+        for _, e in ipairs(DEFAULT_EGGS) do table.insert(eggs, e) end
+    end
+    table.sort(eggs)
+    return eggs
+end
+
+local function FindAvailableGears()
+    local gears, set = {}, {}
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        local n = obj.Name:lower()
+        if n:find("gear") or n:find("tool") or n:find("shovel") or n:find("sprinkler") or n:find("can") then
+            if not set[obj.Name] then
+                set[obj.Name] = true
+                table.insert(gears, obj.Name)
+            end
+        end
+    end
+    if #gears == 0 then
+        for _, g in ipairs(DEFAULT_GEARS) do table.insert(gears, g) end
+    end
+    table.sort(gears)
+    return gears
+end
+
+-- Filter Matching Logic untuk Benih
+local function MatchesSeedFilter(seedName)
+    local hasName = next(CONFIG.SELECTED_SEED_NAMES) ~= nil
+    local hasRarity = next(CONFIG.SELECTED_SEED_RARITIES) ~= nil
     local rarity = SEED_RARITY[seedName]
 
-    local nameOk = not hasNameFilter or (CONFIG.SELECTED_NAMES[seedName] == true)
-    local rarityOk = not hasRarityFilter or (rarity and CONFIG.SELECTED_RARITIES[rarity] == true)
-
+    local nameOk = not hasName or (CONFIG.SELECTED_SEED_NAMES[seedName] == true)
+    local rarityOk = not hasRarity or (rarity and CONFIG.SELECTED_SEED_RARITIES[rarity] == true)
     return nameOk and rarityOk
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- 4. JAYA SC UI ENGINE (PROPRIETARY FRAMEWORK)
+-- JAYA SC UI ENGINE (PROPRIETARY FRAMEWORK)
 -- ═══════════════════════════════════════════════════════════════
 local JayaLib = {
     AccentColor = Color3.fromRGB(16, 185, 129),    -- Emerald Green #10b981
@@ -209,11 +329,13 @@ local JayaLib = {
 }
 
 function JayaLib:EnableAntiAFK()
-    Player.Idled:Connect(function()
+    local conn = Player.Idled:Connect(function()
+        if not JayaState.IsRunning then return end
         VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
         task.wait(1)
         VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
     end)
+    JayaState:TrackConnection(conn)
 end
 JayaLib:EnableAntiAFK()
 
@@ -229,21 +351,27 @@ end
 local function MakeDraggable(handle, target)
     local dragging, dragStart, startPos = false, nil, nil
 
-    handle.InputBegan:Connect(function(input)
+    local c1 = handle.InputBegan:Connect(function(input)
+        if not JayaState.IsRunning then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStart = input.Position
             startPos = target.Position
 
-            input.Changed:Connect(function()
+            local cEnd
+            cEnd = input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     dragging = false
+                    if cEnd then cEnd:Disconnect() end
                 end
             end)
+            JayaState:TrackConnection(cEnd)
         end
     end)
+    JayaState:TrackConnection(c1)
 
-    handle.InputChanged:Connect(function(input)
+    local c2 = handle.InputChanged:Connect(function(input)
+        if not JayaState.IsRunning then return end
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
             target.Position = UDim2.new(
@@ -252,6 +380,7 @@ local function MakeDraggable(handle, target)
             )
         end
     end)
+    JayaState:TrackConnection(c2)
 end
 
 local function SpawnRipple(button, x, y)
@@ -279,13 +408,19 @@ local function SpawnRipple(button, x, y)
 end
 
 function JayaLib:Notify(title, message, duration)
+    if not JayaState.IsRunning then return end
+
     task.spawn(function()
         local parent = GetSafeGuiParent()
-        local notifGui = parent:FindFirstChild("Jaya_Notifications") or CreateInstance("ScreenGui", {
-            Name = "Jaya_Notifications",
-            ResetOnSpawn = false,
-            ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        }, parent)
+        local notifGui = parent:FindFirstChild("Jaya_Notifications")
+        if not notifGui then
+            notifGui = CreateInstance("ScreenGui", {
+                Name = "Jaya_Notifications",
+                ResetOnSpawn = false,
+                ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+            }, parent)
+            JayaState:TrackUI(notifGui)
+        end
 
         local container = notifGui:FindFirstChild("NotifContainer") or CreateInstance("Frame", {
             Name = "NotifContainer",
@@ -306,7 +441,6 @@ function JayaLib:Notify(title, message, duration)
         CreateInstance("UICorner", { CornerRadius = UDim.new(0, 8) }, toast)
         CreateInstance("UIStroke", { Color = JayaLib.AccentColor, Thickness = 1.4 }, toast)
 
-        -- Toast Header with Logo or Icon
         local logoAsset = GetLogoAsset()
         local textOffset = 12
 
@@ -322,7 +456,7 @@ function JayaLib:Notify(title, message, duration)
             textOffset = 34
         end
 
-        local titleLbl = CreateInstance("TextLabel", {
+        CreateInstance("TextLabel", {
             Font = Enum.Font.GothamBold,
             Text = (logoAsset and "" or "🌿 ") .. (title or "JAYA SC"),
             TextColor3 = JayaLib.TextMain,
@@ -334,7 +468,7 @@ function JayaLib:Notify(title, message, duration)
             Parent = toast
         })
 
-        local msgLbl = CreateInstance("TextLabel", {
+        CreateInstance("TextLabel", {
             Font = Enum.Font.Gotham,
             Text = message or "",
             TextColor3 = JayaLib.TextMuted,
@@ -353,22 +487,24 @@ function JayaLib:Notify(title, message, duration)
 
         task.wait(duration or 3.5)
 
-        local outTw = TweenService:Create(toast, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-            Position = UDim2.new(1, 320, 1, -75)
-        })
-        outTw:Play()
-        outTw.Completed:Connect(function() toast:Destroy() end)
+        if toast and toast.Parent then
+            local outTw = TweenService:Create(toast, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                Position = UDim2.new(1, 320, 1, -75)
+            })
+            outTw:Play()
+            outTw.Completed:Connect(function() toast:Destroy() end)
+        end
     end)
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- 5. JAYA SC WINDOW CREATION
+-- WINDOW CREATION & HEADER CONTROLS [-] & [X]
 -- ═══════════════════════════════════════════════════════════════
 function JayaLib:CreateWindow(config)
     local titleText = config.Title or "JAYA SC"
     local subText = config.Subtitle or "Grow a Garden"
-    local windowSize = config.Size or UDim2.fromOffset(540, 330)
-    local tabWidth = config.TabWidth or 130
+    local windowSize = config.Size or UDim2.fromOffset(550, 340)
+    local tabWidth = config.TabWidth or 140
 
     local rootParent = GetSafeGuiParent()
     if rootParent:FindFirstChild("Jaya_MainGui") then
@@ -380,12 +516,11 @@ function JayaLib:CreateWindow(config)
         ResetOnSpawn = false,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     }, rootParent)
+    JayaState:TrackUI(ScreenGui)
 
     local logoAsset = GetLogoAsset()
 
-    -- ═══════════════════════════════════════════════════════════
-    -- Floating Icon for Mobile / Minimize Restore (Using JSC Logo)
-    -- ═══════════════════════════════════════════════════════════
+    -- Floating Icon (Muncul saat tombol [-] ditekan)
     local FloatIcon = CreateInstance("ImageButton", {
         Name = "Jaya_FloatIcon",
         BackgroundColor3 = JayaLib.BgDark,
@@ -403,7 +538,7 @@ function JayaLib:CreateWindow(config)
     MakeDraggable(FloatIcon, FloatIcon)
 
     if not logoAsset then
-        local floatFallback = CreateInstance("TextLabel", {
+        CreateInstance("TextLabel", {
             BackgroundTransparency = 1,
             Size = UDim2.new(1, 0, 1, 0),
             Text = "JSC",
@@ -414,9 +549,7 @@ function JayaLib:CreateWindow(config)
         })
     end
 
-    -- ═══════════════════════════════════════════════════════════
     -- Main Window Container
-    -- ═══════════════════════════════════════════════════════════
     local MainFrame = CreateInstance("Frame", {
         Name = "MainWindow",
         BackgroundColor3 = JayaLib.BgDark,
@@ -430,9 +563,7 @@ function JayaLib:CreateWindow(config)
     CreateInstance("UICorner", { CornerRadius = UDim.new(0, 10) }, MainFrame)
     CreateInstance("UIStroke", { Color = JayaLib.BorderCol, Thickness = 1.5 }, MainFrame)
 
-    -- ═══════════════════════════════════════════════════════════
-    -- Top Header Bar (With Logo next to Title)
-    -- ═══════════════════════════════════════════════════════════
+    -- Topbar Header
     local Topbar = CreateInstance("Frame", {
         Name = "Topbar",
         BackgroundColor3 = Color3.fromRGB(22, 22, 30),
@@ -441,7 +572,7 @@ function JayaLib:CreateWindow(config)
         Parent = MainFrame
     })
     CreateInstance("UICorner", { CornerRadius = UDim.new(0, 10) }, Topbar)
-    local TopbarFill = CreateInstance("Frame", {
+    CreateInstance("Frame", {
         BackgroundColor3 = Color3.fromRGB(22, 22, 30),
         BorderSizePixel = 0,
         Position = UDim2.new(0, 0, 0.5, 0),
@@ -449,20 +580,18 @@ function JayaLib:CreateWindow(config)
         Parent = Topbar
     })
 
-    -- JSC Logo in Topbar
-    local topLogo = CreateInstance("ImageLabel", {
-        Name = "JSC_Logo",
-        BackgroundTransparency = 1,
-        Position = UDim2.new(0, 10, 0.5, -14),
-        Size = UDim2.new(0, 28, 0, 28),
-        Image = logoAsset or "",
-        Parent = Topbar
-    })
-    CreateInstance("UICorner", { CornerRadius = UDim.new(1, 0) }, topLogo)
-
-    -- If no asset, fallback to stylized text badge
-    if not logoAsset then
-        topLogo.Visible = false
+    if logoAsset then
+        local topLogo = CreateInstance("ImageLabel", {
+            Name = "JSC_Logo",
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 10, 0.5, -14),
+            Size = UDim2.new(0, 28, 0, 28),
+            Image = logoAsset,
+            ScaleType = Enum.ScaleType.Fit,
+            Parent = Topbar
+        })
+        CreateInstance("UICorner", { CornerRadius = UDim.new(1, 0) }, topLogo)
+    else
         local badge = CreateInstance("TextLabel", {
             Font = Enum.Font.GothamBold,
             Text = "JSC",
@@ -488,7 +617,7 @@ function JayaLib:CreateWindow(config)
         Parent = Topbar
     })
 
-    local SubLabel = CreateInstance("TextLabel", {
+    CreateInstance("TextLabel", {
         Font = Enum.Font.Gotham,
         Text = "• " .. subText,
         TextColor3 = JayaLib.AccentColor,
@@ -500,7 +629,7 @@ function JayaLib:CreateWindow(config)
         Parent = Topbar
     })
 
-    -- Minimize & Close Buttons
+    -- Tombol [X] (Shutdown Total) dan Tombol [-] (Minimize)
     local CloseBtn = CreateInstance("TextButton", {
         Font = Enum.Font.GothamBold,
         Text = "✕",
@@ -527,19 +656,22 @@ function JayaLib:CreateWindow(config)
     MakeDraggable(Topbar, MainFrame)
 
     MinBtn.Activated:Connect(function()
+        if not JayaState.IsRunning then return end
         MainFrame.Visible = false
         FloatIcon.Visible = true
-        JayaLib:Notify("JAYA SC", "UI di-minimize. Klik ikon JSC untuk membuka kembali.", 3)
+        JayaLib:Notify("JAYA SC", "UI di-minimize. Klik ikon JSC mengambang untuk membuka kembali.", 3)
     end)
+
     FloatIcon.Activated:Connect(function()
+        if not JayaState.IsRunning then return end
         MainFrame.Visible = true
         FloatIcon.Visible = false
     end)
+
     CloseBtn.Activated:Connect(function()
-        ScreenGui:Destroy()
+        JayaState:Shutdown()
     end)
 
-    -- Divider Line
     CreateInstance("Frame", {
         BackgroundColor3 = JayaLib.BorderCol,
         BorderSizePixel = 0,
@@ -548,7 +680,7 @@ function JayaLib:CreateWindow(config)
         Parent = MainFrame
     })
 
-    -- Sidebar for Tabs
+    -- Sidebar Navigasi 3 Toko
     local Sidebar = CreateInstance("ScrollingFrame", {
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
@@ -558,13 +690,12 @@ function JayaLib:CreateWindow(config)
         CanvasSize = UDim2.new(0, 0, 0, 0),
         Parent = MainFrame
     })
-    local SidebarLayout = CreateInstance("UIListLayout", {
-        Padding = UDim.new(0, 5),
+    CreateInstance("UIListLayout", {
+        Padding = UDim.new(0, 6),
         SortOrder = Enum.SortOrder.LayoutOrder,
         Parent = Sidebar
     })
 
-    -- Content Area with Page Navigation
     local ContentHolder = CreateInstance("Frame", {
         BackgroundTransparency = 1,
         Position = UDim2.new(0, tabWidth + 18, 0, 52),
@@ -580,7 +711,6 @@ function JayaLib:CreateWindow(config)
         Parent = ContentHolder
     })
 
-    -- Tab & Component Builder
     local Window = {}
     local tabCount = 0
     local tabButtons = {}
@@ -609,14 +739,14 @@ function JayaLib:CreateWindow(config)
 
         local function updateScroll()
             task.wait(0.02)
-            PageScroll.CanvasSize = UDim2.new(0, 0, 0, PageList.AbsoluteContentSize.Y + 12)
+            PageScroll.CanvasSize = UDim2.new(0, 0, 0, PageList.AbsoluteContentSize.Y + 14)
         end
         PageList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateScroll)
 
         local TabBtn = CreateInstance("TextButton", {
             BackgroundColor3 = (currentIdx == 0) and JayaLib.AccentColor or JayaLib.BgCard,
             BorderSizePixel = 0,
-            Size = UDim2.new(1, 0, 0, 34),
+            Size = UDim2.new(1, 0, 0, 36),
             Text = "",
             LayoutOrder = currentIdx,
             Parent = Sidebar
@@ -637,6 +767,7 @@ function JayaLib:CreateWindow(config)
         tabButtons[currentIdx] = { Btn = TabBtn, Label = TabBtnLabel }
 
         TabBtn.Activated:Connect(function()
+            if not JayaState.IsRunning then return end
             SpawnRipple(TabBtn, Player:GetMouse().X, Player:GetMouse().Y)
             PageLayout:JumpToIndex(currentIdx)
 
@@ -675,7 +806,7 @@ function JayaLib:CreateWindow(config)
                 Parent = SecFrame
             })
 
-            local HeaderTitle = CreateInstance("TextLabel", {
+            CreateInstance("TextLabel", {
                 Font = Enum.Font.GothamBold,
                 Text = secTitle or "Section",
                 TextColor3 = JayaLib.TextMain,
@@ -725,6 +856,7 @@ function JayaLib:CreateWindow(config)
 
             SecLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(refreshSectionHeight)
             SecHeader.Activated:Connect(function()
+                if not JayaState.IsRunning then return end
                 isExpanded = not isExpanded
                 refreshSectionHeight()
             end)
@@ -734,7 +866,6 @@ function JayaLib:CreateWindow(config)
             -- BUTTON
             function Items:AddButton(cfg)
                 local bTitle = cfg.Title or "Button"
-                local bDesc = cfg.Content or cfg.Desc or ""
                 local bCallback = cfg.Callback or function() end
 
                 local btn = CreateInstance("TextButton", {
@@ -770,6 +901,7 @@ function JayaLib:CreateWindow(config)
                 })
 
                 btn.Activated:Connect(function()
+                    if not JayaState.IsRunning then return end
                     SpawnRipple(btn, Player:GetMouse().X, Player:GetMouse().Y)
                     bCallback()
                 end)
@@ -804,7 +936,7 @@ function JayaLib:CreateWindow(config)
                     Parent = tog
                 })
 
-                local descLbl = CreateInstance("TextLabel", {
+                CreateInstance("TextLabel", {
                     Font = Enum.Font.Gotham,
                     Text = tDesc,
                     TextColor3 = Color3.fromRGB(120, 120, 135),
@@ -849,6 +981,7 @@ function JayaLib:CreateWindow(config)
                 end
 
                 tog.Activated:Connect(function()
+                    if not JayaState.IsRunning then return end
                     SpawnRipple(tog, Player:GetMouse().X, Player:GetMouse().Y)
                     handler:Set(not state)
                 end)
@@ -871,7 +1004,7 @@ function JayaLib:CreateWindow(config)
                 })
                 CreateInstance("UICorner", { CornerRadius = UDim.new(0, 5) }, sliderFrame)
 
-                local titleLbl = CreateInstance("TextLabel", {
+                CreateInstance("TextLabel", {
                     Font = Enum.Font.GothamBold,
                     Text = sTitle,
                     TextColor3 = JayaLib.TextMain,
@@ -916,6 +1049,7 @@ function JayaLib:CreateWindow(config)
 
                 local sliding = false
                 local function updateSlider(input)
+                    if not JayaState.IsRunning then return end
                     local relX = math.clamp((input.Position.X - barBg.AbsolutePosition.X) / barBg.AbsoluteSize.X, 0, 1)
                     local calculated = math.floor((minVal + ((maxVal - minVal) * relX)) * 10) / 10
                     currentVal = calculated
@@ -924,22 +1058,28 @@ function JayaLib:CreateWindow(config)
                     sCallback(currentVal)
                 end
 
-                barBg.InputBegan:Connect(function(input)
+                local cBegan = barBg.InputBegan:Connect(function(input)
+                    if not JayaState.IsRunning then return end
                     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                         sliding = true
                         updateSlider(input)
                     end
                 end)
-                UserInputService.InputEnded:Connect(function(input)
+                JayaState:TrackConnection(cBegan)
+
+                local cEnded = UserInputService.InputEnded:Connect(function(input)
                     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                         sliding = false
                     end
                 end)
-                UserInputService.InputChanged:Connect(function(input)
+                JayaState:TrackConnection(cEnded)
+
+                local cChanged = UserInputService.InputChanged:Connect(function(input)
                     if sliding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
                         updateSlider(input)
                     end
                 end)
+                JayaState:TrackConnection(cChanged)
             end
 
             -- DROPDOWN (MULTI & SINGLE)
@@ -966,7 +1106,7 @@ function JayaLib:CreateWindow(config)
                     Parent = dropFrame
                 })
 
-                local titleLbl = CreateInstance("TextLabel", {
+                CreateInstance("TextLabel", {
                     Font = Enum.Font.GothamBold,
                     Text = dTitle,
                     TextColor3 = JayaLib.TextMain,
@@ -1010,7 +1150,7 @@ function JayaLib:CreateWindow(config)
                     CanvasSize = UDim2.new(0, 0, 0, #options * 28),
                     Parent = dropFrame
                 })
-                local optLayout = CreateInstance("UIListLayout", {
+                CreateInstance("UIListLayout", {
                     Padding = UDim.new(0, 3),
                     SortOrder = Enum.SortOrder.LayoutOrder,
                     Parent = optionHolder
@@ -1061,9 +1201,10 @@ function JayaLib:CreateWindow(config)
                         Parent = optionHolder
                     })
                     CreateInstance("UICorner", { CornerRadius = UDim.new(0, 4) }, optBtn)
-                    local pad = CreateInstance("UIPadding", { PaddingLeft = UDim.new(0, 8) }, optBtn)
+                    CreateInstance("UIPadding", { PaddingLeft = UDim.new(0, 8) }, optBtn)
 
                     optBtn.Activated:Connect(function()
+                        if not JayaState.IsRunning then return end
                         if isMulti then
                             if type(selected) ~= "table" then selected = {} end
                             if selected[optName] then
@@ -1088,6 +1229,7 @@ function JayaLib:CreateWindow(config)
                 refreshOptions()
 
                 dropHeader.Activated:Connect(function()
+                    if not JayaState.IsRunning then return end
                     dropOpen = not dropOpen
                     if dropOpen then
                         dropFrame.Size = UDim2.new(1, 0, 0, 160)
@@ -1098,6 +1240,14 @@ function JayaLib:CreateWindow(config)
                     end
                     refreshSectionHeight()
                 end)
+
+                return {
+                    Reset = function()
+                        selected = isMulti and {} or options[1]
+                        refreshOptions()
+                        dCallback(selected)
+                    end
+                }
             end
 
             -- PARAGRAPH
@@ -1155,198 +1305,409 @@ function JayaLib:CreateWindow(config)
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- 6. IMPLEMENTASI FITUR GAME: GROW A GARDEN DENGAN JAYA SC
+-- TAHAP 3: STRUKTUR 3 TOKO (SHOP SEED, SHOP EGG, SHOP GEARS)
 -- ═══════════════════════════════════════════════════════════════
 
 local Window = JayaLib:CreateWindow({
     Title = "JAYA SC",
     Subtitle = "Grow a Garden",
-    Size = UDim2.fromOffset(540, 330),
-    TabWidth = 135
+    Size = UDim2.fromOffset(560, 340),
+    TabWidth = 145
 })
 
--- ---------------------------------------------------------------
--- TAB 1: 🛒 AUTO BUY SEEDS
--- ---------------------------------------------------------------
-local TabBuy = Window:CreateTab({ Name = "Auto Buy", Icon = "🛒" })
-local SecBuy = TabBuy:AddSection("Kontrol Pembelian Otomatis", true)
+-- ───────────────────────────────────────────────────────────────
+-- TOKO 1: 🌱 SHOP SEED (Beli Benih)
+-- ───────────────────────────────────────────────────────────────
+local TabSeed = Window:CreateTab({ Name = "Shop Seed", Icon = "🌱" })
 
-local StatusParagraph = SecBuy:AddParagraph({
-    Title = "Status Pembelian",
-    Content = "Sistem siap. Atur filter kelangkaan atau nama benih di tab sebelah."
+-- Section 1.1: Kontrol Pembelian Benih
+local SecSeedCtrl = TabSeed:AddSection("Kontrol Pembelian Benih", true)
+
+local SeedStatus = SecSeedCtrl:AddParagraph({
+    Title = "Status Benih",
+    Content = "Siap membeli. Silakan atur filter kelangkaan atau nama benih di bawah."
 })
 
-local isPurchasing = false
-local function ExecutePurchase()
-    if isPurchasing then return end
-    isPurchasing = true
+local isBuyingSeeds = false
+local function BuySeeds()
+    if not JayaState.IsRunning or isBuyingSeeds then return end
+    isBuyingSeeds = true
 
-    local remotes = FindBuyRemotes()
-    local allSeeds = FindAllAvailableSeeds()
+    local remotes = FindRemotes()
+    local available = FindAvailableSeeds()
     local targets = {}
 
-    for _, s in ipairs(allSeeds) do
-        if MatchesFilter(s) then
-            table.insert(targets, s)
+    for _, s in ipairs(available) do
+        if MatchesSeedFilter(s) then table.insert(targets, s) end
+    end
+
+    if #targets == 0 then
+        SeedStatus.Set("Status: Kosong", "Tidak ada benih yang sesuai filter!")
+        JayaLib:Notify("Shop Seed", "Tidak ada benih yang lolos filter!", 3)
+        isBuyingSeeds = false
+        return
+    end
+
+    SeedStatus.Set("Status: Membeli...", string.format("Memproses %d benih...", #targets))
+    local okCount = 0
+
+    for _, seedName in ipairs(targets) do
+        if not JayaState.IsRunning then break end
+
+        for _, rem in ipairs(remotes) do
+            pcall(function()
+                if rem:IsA("RemoteEvent") then
+                    rem:FireServer("Buy", seedName, 1)
+                    rem:FireServer("BuySeed", seedName, 1)
+                    rem:FireServer(seedName, 1)
+                elseif rem:IsA("RemoteFunction") then
+                    rem:InvokeServer("Buy", seedName, 1)
+                end
+            end)
+        end
+        okCount = okCount + 1
+        task.wait(CONFIG.SEED_DELAY)
+    end
+
+    local summary = string.format("Selesai diproses! (%d benih)", okCount)
+    SeedStatus.Set("Status: Selesai ✅", summary)
+    JayaLib:Notify("Shop Seed", summary, 3.5)
+    isBuyingSeeds = false
+end
+
+SecSeedCtrl:AddToggle({
+    Title = "Auto Buy Seed (Loop)",
+    Desc = "Membeli benih berulang-ulang secara otomatis",
+    Default = false,
+    Callback = function(val)
+        CONFIG.SEED_LOOP = val
+        if val then
+            JayaLib:Notify("Shop Seed", "Loop Beli Benih: AKTIF", 2.5)
+            task.spawn(function()
+                while JayaState.IsRunning and CONFIG.SEED_LOOP do
+                    BuySeeds()
+                    task.wait(CONFIG.SEED_LOOP_INTERVAL)
+                end
+            end)
+        else
+            JayaLib:Notify("Shop Seed", "Loop Beli Benih: DIMATIKAN", 2.5)
+        end
+    end
+})
+
+SecSeedCtrl:AddButton({
+    Title = "Beli Benih Terpilih (1x Jalan)",
+    Callback = function()
+        task.spawn(BuySeeds)
+    end
+})
+
+SecSeedCtrl:AddSlider({
+    Title = "Delay Beli Benih (detik)",
+    Min = 0.1,
+    Max = 2.0,
+    Default = CONFIG.SEED_DELAY,
+    Callback = function(val)
+        CONFIG.SEED_DELAY = val
+    end
+})
+
+-- Section 1.2: Filter & Pilihan Benih
+local SecSeedFilter = TabSeed:AddSection("Filter Kelangkaan & Nama Benih", true)
+
+local rarityDrop = SecSeedFilter:AddDropdown({
+    Title = "Filter Rarity Benih",
+    Multi = true,
+    Options = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"},
+    Default = {},
+    Callback = function(selectedTable)
+        CONFIG.SELECTED_SEED_RARITIES = {}
+        for r, isSel in pairs(selectedTable) do
+            if isSel then CONFIG.SELECTED_SEED_RARITIES[r] = true end
+        end
+    end
+})
+
+local seedList = FindAvailableSeeds()
+local nameDrop = SecSeedFilter:AddDropdown({
+    Title = "Pilih Nama Benih",
+    Multi = true,
+    Options = seedList,
+    Default = {},
+    Callback = function(selectedTable)
+        CONFIG.SELECTED_SEED_NAMES = {}
+        for n, isSel in pairs(selectedTable) do
+            if isSel then CONFIG.SELECTED_SEED_NAMES[n] = true end
+        end
+    end
+})
+
+SecSeedFilter:AddButton({
+    Title = "Reset Filter Benih (Pilih Semua)",
+    Callback = function()
+        CONFIG.SELECTED_SEED_RARITIES = {}
+        CONFIG.SELECTED_SEED_NAMES = {}
+        rarityDrop.Reset()
+        nameDrop.Reset()
+        JayaLib:Notify("Shop Seed", "Filter benih di-reset: Membeli semua benih.", 3)
+    end
+})
+
+-- ───────────────────────────────────────────────────────────────
+-- TOKO 2: 🥚 SHOP EGG (Beli Telur / Pets)
+-- ───────────────────────────────────────────────────────────────
+local TabEgg = Window:CreateTab({ Name = "Shop Egg", Icon = "🥚" })
+
+-- Section 2.1: Kontrol Pembelian Telur
+local SecEggCtrl = TabEgg:AddSection("Kontrol Pembelian Telur", true)
+
+local EggStatus = SecEggCtrl:AddParagraph({
+    Title = "Status Telur",
+    Content = "Siap membeli telur. Pilih jenis telur yang ingin dibeli di bawah."
+})
+
+local isBuyingEggs = false
+local function BuyEggs()
+    if not JayaState.IsRunning or isBuyingEggs then return end
+    isBuyingEggs = true
+
+    local remotes = FindRemotes()
+    local available = FindAvailableEggs()
+    local targets = {}
+
+    local hasEggFilter = next(CONFIG.SELECTED_EGGS) ~= nil
+    for _, e in ipairs(available) do
+        if not hasEggFilter or (CONFIG.SELECTED_EGGS[e] == true) then
+            table.insert(targets, e)
         end
     end
 
     if #targets == 0 then
-        StatusParagraph.Set("Status: Kosong", "Tidak ada benih yang sesuai filter!")
-        JayaLib:Notify("Auto Buy", "Tidak ada benih yang lolos filter!", 3)
-        isPurchasing = false
+        EggStatus.Set("Status: Kosong", "Tidak ada telur yang dipilih!")
+        JayaLib:Notify("Shop Egg", "Tidak ada telur yang dipilih!", 3)
+        isBuyingEggs = false
         return
     end
 
-    StatusParagraph.Set("Status: Membeli...", string.format("Sedang memproses %d jenis benih...", #targets))
-    local bought, failed = 0, 0
+    EggStatus.Set("Status: Membeli...", string.format("Memproses %d jenis telur...", #targets))
+    local count = 0
 
-    for _, seedName in ipairs(targets) do
-        local success = false
+    for _, eggName in ipairs(targets) do
+        if not JayaState.IsRunning then break end
+
         for _, rem in ipairs(remotes) do
-            local ok = pcall(function()
+            pcall(function()
                 if rem:IsA("RemoteEvent") then
-                    rem:FireServer("Buy", seedName, CONFIG.BUY_QUANTITY)
-                    rem:FireServer("BuySeed", seedName, CONFIG.BUY_QUANTITY)
-                    rem:FireServer(seedName, CONFIG.BUY_QUANTITY)
+                    rem:FireServer("BuyEgg", eggName, 1)
+                    rem:FireServer("PurchaseEgg", eggName, 1)
+                    rem:FireServer("OpenEgg", eggName, 1)
+                    rem:FireServer(eggName, 1)
                 elseif rem:IsA("RemoteFunction") then
-                    rem:InvokeServer("Buy", seedName, CONFIG.BUY_QUANTITY)
+                    rem:InvokeServer("BuyEgg", eggName, 1)
                 end
             end)
-            if ok then success = true break end
         end
-
-        if success then bought = bought + 1 else failed = failed + 1 end
-        task.wait(CONFIG.DELAY_BETWEEN_PURCHASES)
+        count = count + 1
+        task.wait(CONFIG.EGG_DELAY)
     end
 
-    local resultMsg = string.format("Selesai! Sukses: %d | Gagal: %d", bought, failed)
-    StatusParagraph.Set("Status: Selesai ✅", resultMsg)
-    JayaLib:Notify("Auto Buy", resultMsg, 4)
-    isPurchasing = false
+    local summary = string.format("Selesai diproses! (%d telur)", count)
+    EggStatus.Set("Status: Selesai ✅", summary)
+    JayaLib:Notify("Shop Egg", summary, 3.5)
+    isBuyingEggs = false
 end
 
--- Toggle Loop
-local loopRunning = false
-SecBuy:AddToggle({
-    Title = "Auto Buy Seeds (Loop)",
-    Desc = "Membeli benih berulang-ulang secara otomatis",
+SecEggCtrl:AddToggle({
+    Title = "Auto Buy Egg (Loop)",
+    Desc = "Membeli telur berulang-ulang secara otomatis",
     Default = false,
     Callback = function(val)
-        CONFIG.LOOP_MODE = val
-        loopRunning = val
-        if loopRunning then
-            JayaLib:Notify("Auto Buy Loop", "Loop Mode: AKTIF", 2.5)
+        CONFIG.EGG_LOOP = val
+        if val then
+            JayaLib:Notify("Shop Egg", "Loop Beli Telur: AKTIF", 2.5)
             task.spawn(function()
-                while loopRunning do
-                    ExecutePurchase()
-                    task.wait(CONFIG.LOOP_INTERVAL)
+                while JayaState.IsRunning and CONFIG.EGG_LOOP do
+                    BuyEggs()
+                    task.wait(CONFIG.EGG_LOOP_INTERVAL)
                 end
             end)
         else
-            JayaLib:Notify("Auto Buy Loop", "Loop Mode: DIMATIKAN", 2.5)
+            JayaLib:Notify("Shop Egg", "Loop Beli Telur: DIMATIKAN", 2.5)
         end
     end
 })
 
--- Button Beli 1x
-SecBuy:AddButton({
-    Title = "Beli Semua Benih (1x Jalan)",
-    Desc = "Membeli semua benih yang lolos filter sekarang",
+SecEggCtrl:AddButton({
+    Title = "Beli Telur Terpilih (1x Jalan)",
     Callback = function()
-        task.spawn(ExecutePurchase)
+        task.spawn(BuyEggs)
     end
 })
 
--- Slider Delay
-SecBuy:AddSlider({
-    Title = "Delay Antar Pembelian (detik)",
-    Min = 0.1,
-    Max = 2.0,
-    Default = CONFIG.DELAY_BETWEEN_PURCHASES,
+SecEggCtrl:AddSlider({
+    Title = "Delay Beli Telur (detik)",
+    Min = 0.2,
+    Max = 3.0,
+    Default = CONFIG.EGG_DELAY,
     Callback = function(val)
-        CONFIG.DELAY_BETWEEN_PURCHASES = val
+        CONFIG.EGG_DELAY = val
     end
 })
 
--- ---------------------------------------------------------------
--- TAB 2: ⭐ FILTER RARITY
--- ---------------------------------------------------------------
-local TabRarity = Window:CreateTab({ Name = "Rarity", Icon = "⭐" })
-local SecRarity = TabRarity:AddSection("Filter Kelangkaan Benih", true)
+-- Section 2.2: Pilihan Jenis Telur
+local SecEggFilter = TabEgg:AddSection("Pilihan Jenis Telur", true)
 
-SecRarity:AddParagraph({
-    Title = "Petunjuk Filter",
-    Content = "Pilih satu atau beberapa kelangkaan. Jika tidak ada yang dipilih = membeli semua rarity."
-})
-
-local rarityOptions = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"}
-SecRarity:AddDropdown({
-    Title = "Pilih Rarity",
+local eggList = FindAvailableEggs()
+local eggDrop = SecEggFilter:AddDropdown({
+    Title = "Pilih Jenis Telur",
     Multi = true,
-    Options = rarityOptions,
+    Options = eggList,
     Default = {},
     Callback = function(selectedTable)
-        CONFIG.SELECTED_RARITIES = {}
-        for rName, isSel in pairs(selectedTable) do
-            if isSel then CONFIG.SELECTED_RARITIES[rName] = true end
+        CONFIG.SELECTED_EGGS = {}
+        for eggName, isSel in pairs(selectedTable) do
+            if isSel then CONFIG.SELECTED_EGGS[eggName] = true end
         end
     end
 })
 
-SecRarity:AddButton({
-    Title = "Reset Filter Rarity (Beli Semua)",
+SecEggFilter:AddButton({
+    Title = "Reset Pilihan Telur (Beli Semua Telur)",
     Callback = function()
-        CONFIG.SELECTED_RARITIES = {}
-        JayaLib:Notify("Filter Rarity", "Filter di-reset: Beli semua kelangkaan.", 3)
+        CONFIG.SELECTED_EGGS = {}
+        eggDrop.Reset()
+        JayaLib:Notify("Shop Egg", "Pilihan telur di-reset: Membeli semua telur.", 3)
     end
 })
 
--- ---------------------------------------------------------------
--- TAB 3: 🌾 FILTER BENIH
--- ---------------------------------------------------------------
-local TabSeeds = Window:CreateTab({ Name = "Pilih Benih", Icon = "🌾" })
-local SecSeeds = TabSeeds:AddSection("Filter Benih Spesifik", true)
+-- ───────────────────────────────────────────────────────────────
+-- TOKO 3: ⚙️ SHOP GEARS (Beli Alat / Peralatan Berkebun)
+-- ───────────────────────────────────────────────────────────────
+local TabGear = Window:CreateTab({ Name = "Shop Gears", Icon = "⚙️" })
 
-local allSeedList = FindAllAvailableSeeds()
-SecSeeds:AddDropdown({
-    Title = "Pilih Nama Benih",
-    Multi = true,
-    Options = allSeedList,
-    Default = {},
-    Callback = function(selectedTable)
-        CONFIG.SELECTED_NAMES = {}
-        for sName, isSel in pairs(selectedTable) do
-            if isSel then CONFIG.SELECTED_NAMES[sName] = true end
+-- Section 3.1: Kontrol Pembelian Gears
+local SecGearCtrl = TabGear:AddSection("Kontrol Pembelian Alat & Gears", true)
+
+local GearStatus = SecGearCtrl:AddParagraph({
+    Title = "Status Gears",
+    Content = "Siap membeli alat/gears. Pilih peralatan yang ingin dibeli di bawah."
+})
+
+local isBuyingGears = false
+local function BuyGears()
+    if not JayaState.IsRunning or isBuyingGears then return end
+    isBuyingGears = true
+
+    local remotes = FindRemotes()
+    local available = FindAvailableGears()
+    local targets = {}
+
+    local hasGearFilter = next(CONFIG.SELECTED_GEARS) ~= nil
+    for _, g in ipairs(available) do
+        if not hasGearFilter or (CONFIG.SELECTED_GEARS[g] == true) then
+            table.insert(targets, g)
+        end
+    end
+
+    if #targets == 0 then
+        GearStatus.Set("Status: Kosong", "Tidak ada alat yang dipilih!")
+        JayaLib:Notify("Shop Gears", "Tidak ada alat yang dipilih!", 3)
+        isBuyingGears = false
+        return
+    end
+
+    GearStatus.Set("Status: Membeli...", string.format("Memproses %d jenis alat...", #targets))
+    local count = 0
+
+    for _, gearName in ipairs(targets) do
+        if not JayaState.IsRunning then break end
+
+        for _, rem in ipairs(remotes) do
+            pcall(function()
+                if rem:IsA("RemoteEvent") then
+                    rem:FireServer("BuyGear", gearName, 1)
+                    rem:FireServer("PurchaseGear", gearName, 1)
+                    rem:FireServer("BuyTool", gearName, 1)
+                    rem:FireServer(gearName, 1)
+                elseif rem:IsA("RemoteFunction") then
+                    rem:InvokeServer("BuyGear", gearName, 1)
+                end
+            end)
+        end
+        count = count + 1
+        task.wait(CONFIG.GEAR_DELAY)
+    end
+
+    local summary = string.format("Selesai diproses! (%d alat)", count)
+    GearStatus.Set("Status: Selesai ✅", summary)
+    JayaLib:Notify("Shop Gears", summary, 3.5)
+    isBuyingGears = false
+end
+
+SecGearCtrl:AddToggle({
+    Title = "Auto Buy Gears (Loop)",
+    Desc = "Membeli alat berkebun berulang-ulang secara otomatis",
+    Default = false,
+    Callback = function(val)
+        CONFIG.GEAR_LOOP = val
+        if val then
+            JayaLib:Notify("Shop Gears", "Loop Beli Gears: AKTIF", 2.5)
+            task.spawn(function()
+                while JayaState.IsRunning and CONFIG.GEAR_LOOP do
+                    BuyGears()
+                    task.wait(CONFIG.GEAR_LOOP_INTERVAL)
+                end
+            end)
+        else
+            JayaLib:Notify("Shop Gears", "Loop Beli Gears: DIMATIKAN", 2.5)
         end
     end
 })
 
-SecSeeds:AddButton({
-    Title = "Reset Pilihan Benih (Beli Semua)",
+SecGearCtrl:AddButton({
+    Title = "Beli Gears Terpilih (1x Jalan)",
     Callback = function()
-        CONFIG.SELECTED_NAMES = {}
-        JayaLib:Notify("Filter Benih", "Pilihan benih di-reset: Beli semua benih.", 3)
+        task.spawn(BuyGears)
     end
 })
 
--- ---------------------------------------------------------------
--- TAB 4: ⚙️ PENGATURAN
--- ---------------------------------------------------------------
-local TabSettings = Window:CreateTab({ Name = "Pengaturan", Icon = "⚙️" })
-local SecSettings = TabSettings:AddSection("Sistem & Info", true)
-
-SecSettings:AddParagraph({
-    Title = "JAYA SC v1.0",
-    Content = "Framework UI kustom eksklusif untuk game Roblox Grow a Garden. Dibuat mandiri & bebas kredit pihak ketiga."
-})
-
-SecSettings:AddButton({
-    Title = "Uji Coba Notifikasi",
-    Callback = function()
-        JayaLib:Notify("JAYA SC", "Sistem notifikasi berjalan lancar dan responsif!", 3.5)
+SecGearCtrl:AddSlider({
+    Title = "Delay Beli Gears (detik)",
+    Min = 0.1,
+    Max = 2.5,
+    Default = CONFIG.GEAR_DELAY,
+    Callback = function(val)
+        CONFIG.GEAR_DELAY = val
     end
 })
 
--- Notifikasi Sambutan
-JayaLib:Notify("JAYA SC", "Selamat datang! Script Grow a Garden berhasil dimuat.", 4.5)
+-- Section 3.2: Pilihan Jenis Gears
+local SecGearFilter = TabGear:AddSection("Pilihan Jenis Alat & Peralatan", true)
+
+local gearList = FindAvailableGears()
+local gearDrop = SecGearFilter:AddDropdown({
+    Title = "Pilih Jenis Alat / Gear",
+    Multi = true,
+    Options = gearList,
+    Default = {},
+    Callback = function(selectedTable)
+        CONFIG.SELECTED_GEARS = {}
+        for gearName, isSel in pairs(selectedTable) do
+            if isSel then CONFIG.SELECTED_GEARS[gearName] = true end
+        end
+    end
+})
+
+SecGearFilter:AddButton({
+    Title = "Reset Pilihan Gears (Beli Semua Alat)",
+    Callback = function()
+        CONFIG.SELECTED_GEARS = {}
+        gearDrop.Reset()
+        JayaLib:Notify("Shop Gears", "Pilihan gears di-reset: Membeli semua alat.", 3)
+    end
+})
+
+-- ═══════════════════════════════════════════════════════════════
+-- NOTIFIKASI PEMBUKA
+-- ═══════════════════════════════════════════════════════════════
+JayaLib:Notify("JAYA SC", "Selamat datang! 3 Toko (Seed, Egg, Gears) siap digunakan.", 5)

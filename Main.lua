@@ -155,7 +155,6 @@ local CONFIG = {
     SEED_LOOP = false,
     SEED_LOOP_INTERVAL = 3,
     SELECTED_SEED_NAMES = {},    -- [name] = true
-    SELECTED_SEED_RARITIES = {}, -- [rarity] = true
 
     -- 2. Shop Egg
     EGG_LOOP = false,
@@ -168,47 +167,88 @@ local CONFIG = {
     SELECTED_GEARS = {},         -- [gearName] = true
 }
 
-local SEED_RARITY = {
-    ["Carrot Seed"]       = "Common",
-    ["Tomato Seed"]       = "Common",
-    ["Potato Seed"]       = "Common",
-    ["Wheat Seed"]        = "Common",
-    ["Corn Seed"]         = "Common",
-    ["Onion Seed"]        = "Common",
-    ["Lettuce Seed"]      = "Common",
-
-    ["Strawberry Seed"]   = "Uncommon",
-    ["Blueberry Seed"]    = "Uncommon",
-    ["Pepper Seed"]       = "Uncommon",
-    ["Tulip Seed"]        = "Uncommon",
-    ["Daisy Seed"]        = "Uncommon",
-    ["Rice Seed"]         = "Uncommon",
-
-    ["Watermelon Seed"]   = "Rare",
-    ["Pumpkin Seed"]      = "Rare",
-    ["Rose Seed"]         = "Rare",
-    ["Cactus Seed"]       = "Rare",
-    ["Mushroom Seed"]     = "Rare",
-    ["Bamboo Seed"]       = "Rare",
-
-    ["Apple Seed"]        = "Epic",
-    ["Orange Seed"]       = "Epic",
-    ["Grape Seed"]        = "Epic",
-    ["Lemon Seed"]        = "Epic",
-    ["Cherry Seed"]       = "Epic",
-    ["Sunflower Seed"]    = "Epic",
-
-    ["Mango Seed"]        = "Legendary",
-    ["Coconut Seed"]      = "Legendary",
-    ["Dragonfruit Seed"]  = "Legendary",
-    ["Starfruit Seed"]    = "Legendary",
-    ["Golden Apple Seed"] = "Legendary",
-
-    ["Moonflower Seed"]   = "Mythic",
-    ["Rainbow Seed"]      = "Mythic",
-    ["Crystal Seed"]      = "Mythic",
-    ["Cosmic Seed"]       = "Mythic",
+-- 32 Jenis Benih Resmi Sesuai Tabel Game Grow a Garden
+local DEFAULT_SEEDS = {
+    "Carrot Seed",
+    "Strawberry Seed",
+    "Blueberry Seed",
+    "Buttercup Seed",
+    "Tomato Seed",
+    "Corn Seed",
+    "Daffodil Seed",
+    "Watermelon Seed",
+    "Pumpkin Seed",
+    "Apple Seed",
+    "Bamboo Seed",
+    "Coconut Seed",
+    "Cactus Seed",
+    "Dragon Fruit Seed",
+    "Mango Seed",
+    "Grape Seed",
+    "Mushroom Seed",
+    "Pepper Seed",
+    "Cacao Seed",
+    "Sunflower Seed",
+    "Beanstalk Seed",
+    "Ember Lily Seed",
+    "Sugar Apple Seed",
+    "Burning Bud Seed",
+    "Giant Pinecone Seed",
+    "Elder Strawberry Seed",
+    "Romanesco Seed",
+    "Crimson Thorn Seed",
+    "Zebrazinkle Seed",
+    "Octobloom Seed",
+    "Alien Apple Seed",
+    "Aurum Spire Seed",
 }
+
+local SEED_TIER = {
+    ["Carrot Seed"]           = "Common",
+    ["Strawberry Seed"]       = "Common",
+    ["Blueberry Seed"]        = "Uncommon",
+    ["Buttercup Seed"]        = "Uncommon",
+    ["Tomato Seed"]           = "Rare",
+    ["Corn Seed"]             = "Rare",
+    ["Daffodil Seed"]         = "Rare",
+    ["Watermelon Seed"]       = "Legendary",
+    ["Pumpkin Seed"]          = "Legendary",
+    ["Apple Seed"]            = "Legendary",
+    ["Bamboo Seed"]           = "Legendary",
+    ["Coconut Seed"]          = "Mythical",
+    ["Cactus Seed"]           = "Mythical",
+    ["Dragon Fruit Seed"]     = "Mythical",
+    ["Mango Seed"]            = "Mythical",
+    ["Grape Seed"]            = "Divine",
+    ["Mushroom Seed"]         = "Divine",
+    ["Pepper Seed"]           = "Divine",
+    ["Cacao Seed"]            = "Divine",
+    ["Sunflower Seed"]        = "Divine",
+    ["Beanstalk Seed"]        = "Prismatic",
+    ["Ember Lily Seed"]       = "Prismatic",
+    ["Sugar Apple Seed"]      = "Prismatic",
+    ["Burning Bud Seed"]      = "Prismatic",
+    ["Giant Pinecone Seed"]   = "Prismatic",
+    ["Elder Strawberry Seed"] = "Prismatic",
+    ["Romanesco Seed"]        = "Prismatic",
+    ["Crimson Thorn Seed"]    = "Transcendent",
+    ["Zebrazinkle Seed"]      = "Transcendent",
+    ["Octobloom Seed"]        = "Transcendent",
+    ["Alien Apple Seed"]      = "Transcendent",
+    ["Aurum Spire Seed"]      = "Transcendent",
+}
+
+-- Fungsi Penghitung Waktu Refresh Toko (Tiap 5 Menit pada Menit XX:X0 & XX:X5)
+local function GetRestockTimeInfo()
+    local t = os.time()
+    local rem = 300 - (t % 300)
+    if rem == 300 then
+        return "RESTOCK!", 0
+    end
+    local m = math.floor(rem / 60)
+    local s = rem % 60
+    return string.format("%02d:%02d", m, s), rem
+end
 
 local DEFAULT_EGGS = {
     "Common Egg", "Uncommon Egg", "Rare Egg", "Forest Egg",
@@ -252,6 +292,13 @@ end
 
 local function FindAvailableSeeds()
     local seeds, set = {}, {}
+    -- Urutan utama sesuai tabel resmi (Tier Common s/d Transcendent)
+    for _, s in ipairs(DEFAULT_SEEDS) do
+        if not set[s] then
+            set[s] = true
+            table.insert(seeds, s)
+        end
+    end
     for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
         if obj.Name:lower():find("seed") or obj.Name:lower():find("benih") then
             if not set[obj.Name] then
@@ -260,10 +307,6 @@ local function FindAvailableSeeds()
             end
         end
     end
-    if #seeds == 0 then
-        for s, _ in pairs(SEED_RARITY) do table.insert(seeds, s) end
-    end
-    table.sort(seeds)
     return seeds
 end
 
@@ -302,15 +345,7 @@ local function FindAvailableGears()
     return gears
 end
 
-local function MatchesSeedFilter(seedName)
-    local hasName = next(CONFIG.SELECTED_SEED_NAMES) ~= nil
-    local hasRarity = next(CONFIG.SELECTED_SEED_RARITIES) ~= nil
-    local rarity = SEED_RARITY[seedName]
-
-    local nameOk = not hasName or (CONFIG.SELECTED_SEED_NAMES[seedName] == true)
-    local rarityOk = not hasRarity or (rarity and CONFIG.SELECTED_SEED_RARITIES[rarity] == true)
-    return nameOk and rarityOk
-end
+-- Filter benih kini langsung menggunakan nama benih terpilih (Filter Rarity dihapus)
 
 -- ═══════════════════════════════════════════════════════════════
 -- JAYA SC UI ENGINE (PROPRIETARY FRAMEWORK)
@@ -1282,11 +1317,74 @@ CategoryBar = TabShop:AddCategoryBar({
     end
 })
 
+-- Banner Countdown Live Refresh Toko (Setiap 5 menit pada XX:X0 dan XX:X5)
+local RestockBanner = CreateInstance("Frame", {
+    BackgroundColor3 = JayaLib.BgCard,
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 36),
+    LayoutOrder = 1,
+    Parent = TabShop.PageScroll
+})
+CreateInstance("UICorner", { CornerRadius = UDim.new(0, 6) }, RestockBanner)
+CreateInstance("UIStroke", { Color = JayaLib.BorderCol, Thickness = 1 }, RestockBanner)
+
+CreateInstance("TextLabel", {
+    Font = Enum.Font.GothamBold,
+    Text = "⏱️",
+    TextSize = 13,
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 0),
+    Size = UDim2.new(0, 20, 1, 0),
+    Parent = RestockBanner
+})
+
+CreateInstance("TextLabel", {
+    Font = Enum.Font.GothamBold,
+    Text = "Refresh Toko (Tiap XX:X0 & XX:X5):",
+    TextColor3 = JayaLib.TextMuted,
+    TextSize = 11,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 34, 0, 0),
+    Size = UDim2.new(1, -135, 1, 0),
+    Parent = RestockBanner
+})
+
+local RestockCountdown = CreateInstance("TextLabel", {
+    Font = Enum.Font.GothamBold,
+    Text = "05:00",
+    TextColor3 = JayaLib.AccentColor,
+    TextSize = 12.5,
+    TextXAlignment = Enum.TextXAlignment.Right,
+    BackgroundTransparency = 1,
+    Position = UDim2.new(1, -95, 0, 0),
+    Size = UDim2.new(0, 85, 1, 0),
+    Parent = RestockBanner
+})
+
+task.spawn(function()
+    while JayaState.IsRunning do
+        local strTime, rem = GetRestockTimeInfo()
+        if rem <= 10 and rem > 0 then
+            RestockCountdown.TextColor3 = Color3.fromRGB(250, 204, 21)
+            RestockCountdown.Text = "⚡ " .. strTime
+        elseif rem == 0 then
+            RestockCountdown.TextColor3 = Color3.fromRGB(52, 211, 153)
+            RestockCountdown.Text = "RESTOCK!"
+        else
+            RestockCountdown.TextColor3 = JayaLib.AccentColor
+            RestockCountdown.Text = strTime
+        end
+        task.wait(1)
+    end
+end)
+
 -- Kartu Panduan yang Muncul Ketika Belum Memilih Kategori
 GuideCard = CreateInstance("Frame", {
     BackgroundColor3 = JayaLib.BgCard,
     BorderSizePixel = 0,
-    Size = UDim2.new(1, 0, 0, 115),
+    Size = UDim2.new(1, 0, 0, 135),
+    LayoutOrder = 3,
     Parent = TabShop.PageScroll
 })
 CreateInstance("UICorner", { CornerRadius = UDim.new(0, 6) }, GuideCard)
@@ -1306,15 +1404,15 @@ CreateInstance("TextLabel", {
 
 CreateInstance("TextLabel", {
     Font = Enum.Font.Gotham,
-    Text = "Silakan klik salah satu pilihan toko di atas untuk membuka menu pembelian otomatis & filternya:\n\n• 🌱 Shop Seed : Filter Kelangkaan & Nama Benih\n• 🥚 Shop Egg : Pilihan Jenis Telur\n• ⚙️ Shop Gears : Pilihan Alat & Perlengkapan Berkebun",
+    Text = "Silakan klik salah satu pilihan toko di atas untuk membuka menu pembelian otomatis & filternya:\n\n• 🌱 Shop Seed : Pilihan 32 Nama Benih & Auto Buy\n• 🥚 Shop Egg : Pilihan Jenis Telur & Auto Buy\n• ⚙️ Shop Gears : Pilihan Alat Berkebun & Auto Buy\n\n⏰ Catatan: Toko di-refresh otomatis setiap 5 menit (menit XX:X0 & XX:X5). Auto Buy akan memborong item pilihan Anda saat restock tiba!",
     TextColor3 = JayaLib.TextMuted,
-    TextSize = 11,
+    TextSize = 10.5,
     TextWrapped = true,
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     BackgroundTransparency = 1,
-    Position = UDim2.new(0, 12, 0, 34),
-    Size = UDim2.new(1, -24, 0, 75),
+    Position = UDim2.new(0, 12, 0, 32),
+    Size = UDim2.new(1, -24, 0, 95),
     Parent = GuideCard
 })
 
@@ -1332,12 +1430,17 @@ local function BuySeeds()
     local available = FindAvailableSeeds()
     local targets = {}
 
+    local hasSeedFilter = next(CONFIG.SELECTED_SEED_NAMES) ~= nil
     for _, s in ipairs(available) do
-        if MatchesSeedFilter(s) then table.insert(targets, s) end
+        if not hasSeedFilter or (CONFIG.SELECTED_SEED_NAMES[s] == true) then
+            table.insert(targets, s)
+        end
     end
 
     for _, seedName in ipairs(targets) do
         if not JayaState.IsRunning or not CONFIG.SEED_LOOP then break end
+
+        local cleanName = seedName:gsub(" Seed$", "")
 
         for _, rem in ipairs(remotes) do
             pcall(function()
@@ -1345,8 +1448,16 @@ local function BuySeeds()
                     rem:FireServer("Buy", seedName, 1)
                     rem:FireServer("BuySeed", seedName, 1)
                     rem:FireServer(seedName, 1)
+                    if cleanName ~= seedName then
+                        rem:FireServer("Buy", cleanName, 1)
+                        rem:FireServer("BuySeed", cleanName, 1)
+                        rem:FireServer(cleanName, 1)
+                    end
                 elseif rem:IsA("RemoteFunction") then
                     rem:InvokeServer("Buy", seedName, 1)
+                    if cleanName ~= seedName then
+                        rem:InvokeServer("Buy", cleanName, 1)
+                    end
                 end
             end)
         end
@@ -1378,22 +1489,9 @@ SecSeed:AddToggle({
     end
 })
 
-SecSeed:AddDropdown({
-    Title = "Filter Rarity Benih",
-    Multi = true,
-    Options = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"},
-    Default = {},
-    Callback = function(selectedTable)
-        CONFIG.SELECTED_SEED_RARITIES = {}
-        for r, isSel in pairs(selectedTable) do
-            if isSel then CONFIG.SELECTED_SEED_RARITIES[r] = true end
-        end
-    end
-})
-
 local seedList = FindAvailableSeeds()
 SecSeed:AddDropdown({
-    Title = "Pilih Nama Benih",
+    Title = "Pilih Nama Benih (32 Benih)",
     Multi = true,
     Options = seedList,
     Default = {},
@@ -1560,6 +1658,34 @@ SecGear:AddDropdown({
         end
     end
 })
+
+
+-- ═══════════════════════════════════════════════════════════════
+-- SINKRONISASI RESTOCK OTOMATIS (SETIAP MENIT XX:X0 & XX:X5)
+-- ═══════════════════════════════════════════════════════════════
+task.spawn(function()
+    local lastRestockMin = -1
+    while JayaState.IsRunning do
+        local now = os.date("*t")
+        local m = now.min
+        local s = now.sec
+        -- Saat menit berakhiran 0 atau 5 (XX:X0 atau XX:X5) pada detik 0-2
+        if (m % 5 == 0) and s <= 2 and lastRestockMin ~= m then
+            lastRestockMin = m
+            print("[JAYA SC] Restock 5-menit tiba (Menit " .. tostring(m) .. ")! Memulai siklus auto buy instan...")
+            if CONFIG.SEED_LOOP then
+                task.spawn(BuySeeds)
+            end
+            if CONFIG.EGG_LOOP then
+                task.spawn(BuyEggs)
+            end
+            if CONFIG.GEAR_LOOP then
+                task.spawn(BuyGears)
+            end
+        end
+        task.wait(1)
+    end
+end)
 
 -- Sembunyikan ketiga menu hingga user memilih salah satu tombol kategori
 SecSeed:SetVisible(false)
